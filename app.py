@@ -191,7 +191,7 @@ async def get_admin_token() -> str:
         if isinstance(data, str):
             token = data.strip('"')
         elif isinstance(data, dict):
-            token = (data.get("token")
+            token = data.get("token")
             expires_in = int(data.get("expires_in") or data.get("expiresIn") or data.get("ExpiresIn") or expires_in)
 
         if not token:
