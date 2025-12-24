@@ -217,9 +217,6 @@ async def get_customer_id_from_frontend(login: LoginBody) -> int:
         "password": login.password
     }
 
-    # remove None fields
-    payload = {k: v for k, v in payload.items() if v is not None}
-
     data = await nc_post_json(NC_FRONTEND_TOKEN_PATH, payload)
 
     customer_id = data.get("customer_id")
