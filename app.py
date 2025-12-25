@@ -221,25 +221,15 @@ async def get_admin_token() -> str:
         return ADMIN_TOKEN
 
 async def get_customer_id_from_frontend(login: LoginBody) -> int:
-    """
-    Calls frontend auth to get customer_id.
-    Frontend response schema is confirmed:
-    {
-      "username": null,
-      "customer_id": <int>,
-      "token": "<jwt>"
-    }
-    """
     payload = {
         "email": login.email,
-        "username": None,
+        "username": "",          # MUST be empty string
         "password": login.password
     }
 
     data = await nc_post_json(NC_FRONTEND_TOKEN_PATH, payload)
 
     customer_id = data.get("customer_id")
-
     if customer_id is None:
         raise HTTPException(
             status_code=502,
