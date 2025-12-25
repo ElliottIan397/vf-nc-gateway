@@ -103,6 +103,7 @@ async def nc_post_json(
             content=json.dumps(payload),
             headers={
                 "Content-Type": "application/json",
+                "Accept": "application/json",
                 **(headers or {})
             }
         )
@@ -163,7 +164,9 @@ async def get_admin_token() -> str:
         data = await nc_post_json(
             NC_BACKEND_TOKEN_PATH,
             {
+                "is_guest": True,
                 "email": NC_ADMIN_EMAIL,
+                "username": NC_ADMIN_EMAIL,
                 "password": NC_ADMIN_PASSWORD
             }
         )
