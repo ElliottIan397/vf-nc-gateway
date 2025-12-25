@@ -223,7 +223,7 @@ async def get_admin_token() -> str:
 async def get_customer_id_from_frontend(login: LoginBody) -> int:
     payload = {
         "email": login.email,
-        "username": "",          # MUST be empty string
+        "username": login.email,          # REQUIRED
         "password": login.password
     }
 
