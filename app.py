@@ -232,7 +232,7 @@ async def get_customer_id_from_frontend(login: LoginBody) -> int:
     """
     payload = {
         "email": login.email,
-        "username": login.username,
+        "username": None,
         "password": login.password
     }
 
