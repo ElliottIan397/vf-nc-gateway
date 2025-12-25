@@ -222,6 +222,7 @@ async def get_admin_token() -> str:
 
 async def get_customer_id_from_frontend(login: LoginBody) -> int:
     payload = {
+        "is_guest": True,
         "email": login.email,
         "username": login.email,          # REQUIRED
         "password": login.password
