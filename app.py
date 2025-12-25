@@ -130,7 +130,12 @@ def require_session(request: Request) -> Tuple[str, int]:
 async def nc_post_json(path: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> Any:
     url = f"{NC_BASE_URL}{path}"
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        r = await client.post(url, json=payload, headers=headers)
+        r = await client.post(
+            url,
+            content=httpx.dumps(payload, default=lambda x: None),
+            headers={**(headers or {}), "Content-Type": "application/json"}
+        )
+
         if r.status_code >= 400:
             raise HTTPException(status_code=502, detail={
                 "error": "nopCommerce POST failed",
