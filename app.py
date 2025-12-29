@@ -61,6 +61,10 @@ class PricesBody(BaseModel):
 class SessionAssertBody(BaseModel):
     sessionToken: str
 
+class OrderDetailsBody(BaseModel):
+    sessionToken: str
+    orderNumber: str
+
 # -------------------------------------------------
 # App
 # -------------------------------------------------
@@ -246,6 +250,29 @@ async def get_final_price(
 
     return data.get("final_price")
 
+async def nc_get_frontend_json(
+    path: str,
+    headers: Dict[str, str]
+) -> Any:
+    url = f"{NC_BASE_URL}{path}"
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        r = await client.get(url, headers=headers)
+
+    if r.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "nopCommerce frontend GET failed",
+                "status": r.status_code,
+                "url": url,
+                "body": r.text
+            }
+        )
+
+    return r.json()
+
+
 # -------------------------------------------------
 # Routes
 # -------------------------------------------------
@@ -304,4 +331,42 @@ async def vf_prices(body: PricesBody):
         "customerId": customer_id,
         "prices": prices,
         "errors": errors
+    }
+
+@app.post("/vf/orders/details")
+async def vf_order_details(body: OrderDetailsBody):
+    # Validate session (refreshes TTL)
+    customer_id = require_session_token(body.sessionToken)
+
+    # Use CUSTOMER token, not admin
+    frontend_token = body.sessionToken  # token issued at login
+
+    # Call nopCommerce frontend order details
+    data = await nc_get_frontend_json(
+        f"/api-frontend/Order/Details/{body.orderNumber}",
+        headers={
+            "Authorization": f"Bearer {frontend_token}",
+            "Accept": "application/json"
+        }
+    )
+
+    # Normalize response
+    return {
+        "orderNumber": data.get("custom_order_number"),
+        "orderDate": data.get("created_on"),
+        "orderStatus": data.get("order_status"),
+        "shippingStatus": data.get("shipping_status"),
+        "paymentMethod": data.get("payment_method"),
+        "orderTotal": data.get("order_total"),
+        "canReturn": data.get("is_return_request_allowed", False),
+        "canReorder": data.get("is_re_order_allowed", False),
+        "items": [
+            {
+                "name": i.get("product_name"),
+                "sku": i.get("sku"),
+                "quantity": i.get("quantity"),
+                "price": i.get("unit_price")
+            }
+            for i in data.get("items", [])
+        ]
     }
