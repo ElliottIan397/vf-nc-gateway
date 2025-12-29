@@ -94,7 +94,7 @@ def new_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def require_session_token(session_token: str) -> int:
+def require_session_token(session_token: str) -> dict:
     sess = SESSIONS.get(session_token)
     if not sess:
         raise HTTPException(status_code=401, detail="Invalid session")
@@ -104,7 +104,7 @@ def require_session_token(session_token: str) -> int:
         raise HTTPException(status_code=401, detail="Session expired")
 
     sess["expires_at"] = now() + SESSION_TTL_SECONDS
-    return int(sess["customer_id"])
+    return sess
 
 
 async def nc_post_json(
@@ -201,26 +201,6 @@ async def get_admin_token() -> str:
         ADMIN_TOKEN_EXPIRES_AT = now() + max(60, expires_in)
         return ADMIN_TOKEN
 
-
-async def get_customer_id_from_frontend(login: LoginBody) -> int:
-    payload = {
-        "is_guest": False,
-        "email": login.email,
-        "username": login.email,
-        "password": login.password
-    }
-
-    data = await nc_post_json(NC_FRONTEND_TOKEN_PATH, payload)
-
-    customer_id = data.get("customer_id")
-    if customer_id is None:
-        raise HTTPException(
-            status_code=502,
-            detail="Could not parse customer_id"
-        )
-
-    return int(customer_id)
-
 # -------------------------------------------------
 # Pricing
 # -------------------------------------------------
@@ -288,11 +268,33 @@ async def vf_session_assert(body: SessionAssertBody):
 
 @app.post("/vf/login")
 async def vf_login(body: LoginBody):
-    customer_id = await get_customer_id_from_frontend(body)
+    # Authenticate against nopCommerce frontend
+    data = await nc_post_json(
+        NC_FRONTEND_TOKEN_PATH,
+        {
+            "is_guest": False,
+            "email": body.email,
+            "username": body.email,
+            "password": body.password
+        }
+    )
 
+    # Extract nopCommerce values
+    frontend_token = data.get("token")
+    customer_id = data.get("customer_id")
+
+    if not frontend_token or customer_id is None:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not authenticate customer with nopCommerce"
+        )
+
+    # Create Render session
     session_token = new_session_token()
+
     SESSIONS[session_token] = {
-        "customer_id": customer_id,
+        "customer_id": int(customer_id),
+        "frontend_token": frontend_token,
         "expires_at": now() + SESSION_TTL_SECONDS
     }
 
@@ -301,9 +303,11 @@ async def vf_login(body: LoginBody):
     }
 
 
+
 @app.post("/vf/prices")
 async def vf_prices(body: PricesBody):
-    customer_id = require_session_token(body.sessionToken)
+    sess = require_session_token(body.sessionToken)
+    customer_id = sess["customer_id"]
 
     tasks = [
         get_final_price(
@@ -336,10 +340,10 @@ async def vf_prices(body: PricesBody):
 @app.post("/vf/orders/details")
 async def vf_order_details(body: OrderDetailsBody):
     # Validate session (refreshes TTL)
-    customer_id = require_session_token(body.sessionToken)
+    sess = require_session_token(body.sessionToken)
 
     # Use CUSTOMER token, not admin
-    frontend_token = body.sessionToken  # token issued at login
+    frontend_token = sess["frontend_token"]  # token issued at login
 
     # Call nopCommerce frontend order details
     data = await nc_get_frontend_json(
