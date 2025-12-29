@@ -58,6 +58,9 @@ class PricesBody(BaseModel):
     includeDiscounts: bool = True
     additionalCharge: float = 0.0
 
+class SessionAssertBody(BaseModel):
+    sessionToken: str
+
 # -------------------------------------------------
 # App
 # -------------------------------------------------
@@ -249,6 +252,11 @@ async def get_final_price(
 @app.get("/health")
 async def health():
     return {"ok": True}
+
+@app.post("/vf/session/assert")
+async def vf_session_assert(body: SessionAssertBody):
+    require_session_token(body.sessionToken)
+    return { "ok": True }
 
 
 @app.post("/vf/login")
