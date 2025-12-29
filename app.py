@@ -345,7 +345,7 @@ async def vf_order_details(body: OrderDetailsBody):
     data = await nc_get_frontend_json(
         f"/api-frontend/Order/Details/{body.orderNumber}",
         headers={
-            "Authorization": f"Bearer {frontend_token}",
+            "Authorization": frontend_token,
             "Accept": "application/json"
         }
     )
