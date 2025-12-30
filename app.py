@@ -67,6 +67,7 @@ class OrderDetailsBody(BaseModel):
 
 class OrderListBody(BaseModel):
     sessionToken: str
+    approxOrderDateText: str | None = None
 
 
 # -------------------------------------------------
@@ -165,6 +166,44 @@ async def nc_get_json(
         )
 
     return r.json()
+
+from datetime import datetime, timedelta
+import dateparser
+
+
+def parse_iso(date_str: str) -> datetime:
+    """
+    Safely parse nopCommerce ISO-ish timestamps.
+    """
+    if not date_str:
+        raise ValueError("Missing date string")
+    return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+
+
+def resolve_date_range(text: str, window_days: int = 4):
+    """
+    Resolve fuzzy human date text into a +/- date window.
+    Examples:
+      - '8/22'
+      - 'Aug 22'
+      - 'mid August'
+      - 'around the 22nd'
+    """
+    parsed = dateparser.parse(
+        text,
+        settings={
+            "PREFER_DATES_FROM": "past",
+            "RELATIVE_BASE": datetime.utcnow(),
+        }
+    )
+
+    if not parsed:
+        raise ValueError(f"Could not parse date text: {text}")
+
+    start_date = parsed - timedelta(days=window_days)
+    end_date = parsed + timedelta(days=window_days)
+    return start_date, end_date
+
 
 # -------------------------------------------------
 # nopCommerce auth helpers
@@ -400,6 +439,19 @@ async def vf_orders_list(body: OrderListBody):
     )
 
     orders = data.get("orders", [])
+
+    # OPTIONAL date-range filtering (safe, non-breaking)
+    if getattr(body, "approxOrderDateText", None):
+        try:
+            start_date, end_date = resolve_date_range(body.approxOrderDateText)
+            orders = [
+                o for o in orders
+                if o.get("created_on")
+                and start_date <= parse_iso(o.get("created_on")) <= end_date
+            ]
+        except Exception:
+            # Fail safe: ignore date filter if anything goes wrong
+            pass
 
     # Normalize for VF
     return {
