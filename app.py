@@ -65,6 +65,10 @@ class OrderDetailsBody(BaseModel):
     sessionToken: str
     orderNumber: str
 
+class OrderListBody(BaseModel):
+    sessionToken: str
+
+
 # -------------------------------------------------
 # App
 # -------------------------------------------------
@@ -377,5 +381,36 @@ async def vf_order_details(body: OrderDetailsBody):
                 "price": i.get("unit_price")
             }
             for i in data.get("items", [])
+        ]
+    }
+
+@app.post("/vf/orders/list")
+async def vf_orders_list(body: OrderListBody):
+    # Validate session
+    sess = require_session_token(body.sessionToken)
+    frontend_token = sess["frontend_token"]
+
+    # Call nopCommerce frontend API
+    data = await nc_get_frontend_json(
+        "/api-frontend/Order/CustomerOrders",
+        headers={
+            "Authorization": frontend_token,
+            "Accept": "application/json"
+        }
+    )
+
+    orders = data.get("orders", [])
+
+    # Normalize for VF
+    return {
+        "orders": [
+            {
+                "orderNumber": o.get("custom_order_number"),
+                "orderDate": o.get("created_on"),
+                "orderStatus": o.get("order_status"),
+                "shippingStatus": o.get("shipping_status"),
+                "orderTotal": o.get("order_total")
+            }
+            for o in orders
         ]
     }
