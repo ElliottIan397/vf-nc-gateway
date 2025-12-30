@@ -354,12 +354,17 @@ async def vf_order_details(body: OrderDetailsBody):
         }
     )
 
+    shipping_status = data.get("shipping_status", "")
+    has_shipped = shipping_status.lower() not in ["not yet shipped", ""]
+
+
     # Normalize response
     return {
         "orderNumber": data.get("custom_order_number"),
         "orderDate": data.get("created_on"),
         "orderStatus": data.get("order_status"),
-        "shippingStatus": data.get("shipping_status"),
+        "shippingStatus": shipping_status,
+        "hasShipped": has_shipped,
         "paymentMethod": data.get("payment_method"),
         "orderTotal": data.get("order_total"),
         "canReturn": data.get("is_return_request_allowed", False),
