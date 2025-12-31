@@ -412,14 +412,56 @@ async def vf_order_details(body: OrderDetailsBody):
     shipping_status = data.get("shipping_status", "")
     has_shipped = shipping_status.lower() not in ["not yet shipped", ""]
 
+    # -------------------------------------------------
+    # NEW: shipment extraction (SAFE, READ-ONLY)
+    # -------------------------------------------------
+    shipments = data.get("shipments", []) or []
 
+    shipped_dates = [
+        s.get("shipped_date")
+        for s in shipments
+        if s.get("shipped_date")
+    ]
+
+    delivery_dates = [
+        s.get("delivery_date")
+        for s in shipments
+        if s.get("delivery_date")
+    ]
+
+    tracking_numbers = [
+        s.get("tracking_number")
+        for s in shipments
+        if s.get("tracking_number")
+    ]
+
+    latest_shipped_date = max(shipped_dates) if shipped_dates else None
+    latest_delivery_date = max(delivery_dates) if delivery_dates else None
+
+    # -------------------------------------------------
     # Normalize response
+    # -------------------------------------------------
     return {
         "orderNumber": data.get("custom_order_number"),
         "orderDate": data.get("created_on"),
         "orderStatus": data.get("order_status"),
         "shippingStatus": shipping_status,
         "hasShipped": has_shipped,
+
+        # NEW: surfaced shipment info
+        "shipments": [
+            {
+                "id": s.get("id"),
+                "trackingNumber": s.get("tracking_number"),
+                "shippedDate": s.get("shipped_date"),
+                "deliveryDate": s.get("delivery_date"),
+            }
+            for s in shipments
+        ],
+        "latestShippedDate": latest_shipped_date,
+        "latestDeliveryDate": latest_delivery_date,
+        "trackingNumbers": tracking_numbers,
+
         "paymentMethod": data.get("payment_method"),
         "orderTotal": data.get("order_total"),
         "canReturn": data.get("is_return_request_allowed", False),
@@ -434,6 +476,7 @@ async def vf_order_details(body: OrderDetailsBody):
             for i in data.get("items", [])
         ]
     }
+
 
 @app.post("/vf/orders/list")
 async def vf_orders_list(body: OrderListBody):
