@@ -452,23 +452,23 @@ async def vf_orders_list(body: OrderListBody):
 
     orders = data.get("orders", [])
 
-# OPTIONAL month-based filtering with rollover
-if body.approxOrderDateText:
-    try:
-        start_date, end_date = resolve_month_range(body.approxOrderDateText)
+    # OPTIONAL month-based filtering with rollover
+    if body.approxOrderDateText:
+        try:
+            start_date, end_date = resolve_month_range(body.approxOrderDateText)
 
-        filtered = [
-            o for o in orders
-            if o.get("created_on")
-            and start_date <= parse_iso(o.get("created_on")) <= end_date
-        ]
+            filtered = [
+                o for o in orders
+                if o.get("created_on")
+                and start_date <= parse_iso(o.get("created_on")) <= end_date
+            ]
 
-        # STRICT month filtering: return filtered set (even if empty)
-        orders = filtered
+            # STRICT month filtering: apply even if empty
+            orders = filtered
 
-    except Exception:
-        # Parsing failed → ignore filter entirely
-        pass
+        except Exception:
+            # Parsing failed → ignore filter entirely
+            pass
 
     # Normalize for VF
     return {
@@ -483,3 +483,4 @@ if body.approxOrderDateText:
             for o in orders
         ]
     }
+
