@@ -8,6 +8,9 @@ from typing import Dict, Any, List, Optional
 import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from datetime import datetime, timedelta
+import calendar
+import dateparser
 
 # -------------------------------------------------
 # Config (ENV)
@@ -180,28 +183,37 @@ def parse_iso(date_str: str) -> datetime:
     return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
 
 
-def resolve_date_range(text: str, window_days: int = 4):
+def resolve_month_range(text: str, rollover_days: int = 3):
     """
-    Resolve fuzzy human date text into a +/- date window.
-    Examples:
-      - '8/22'
-      - 'Aug 22'
-      - 'mid August'
-      - 'around the 22nd'
+    Resolve a human month (e.g. 'Aug 2025', 'August', 'Aug') into a
+    date range with ± rollover days.
     """
+
     parsed = dateparser.parse(
         text,
         settings={
             "PREFER_DATES_FROM": "past",
             "RELATIVE_BASE": datetime.utcnow(),
+            "DATE_ORDER": "MDY",
         }
     )
 
     if not parsed:
-        raise ValueError(f"Could not parse date text: {text}")
+        raise ValueError("Could not parse month")
 
-    start_date = parsed - timedelta(days=window_days)
-    end_date = parsed + timedelta(days=window_days)
+    year = parsed.year
+    month = parsed.month
+
+    first_day = datetime(year, month, 1)
+    last_day = datetime(
+        year,
+        month,
+        calendar.monthrange(year, month)[1]
+    )
+
+    start_date = first_day - timedelta(days=rollover_days)
+    end_date = last_day + timedelta(days=rollover_days)
+
     return start_date, end_date
 
 
@@ -440,21 +452,23 @@ async def vf_orders_list(body: OrderListBody):
 
     orders = data.get("orders", [])
 
-    # OPTIONAL date-range filtering (safe, non-breaking)
-    if getattr(body, "approxOrderDateText", None):
-        try:
-            start_date, end_date = resolve_date_range(body.approxOrderDateText)
-            filtered = [
-                o for o in orders
-                if o.get("created_on")
-                and start_date <= parse_iso(o.get("created_on")) <= end_date
-            ]
-            # ONLY apply filter if it produced results
-            if filtered:
-                orders = filtered
-        except Exception:
-            # Ignore bad date input entirely
-            pass
+# OPTIONAL month-based filtering with rollover
+if body.approxOrderDateText:
+    try:
+        start_date, end_date = resolve_month_range(body.approxOrderDateText)
+
+        filtered = [
+            o for o in orders
+            if o.get("created_on")
+            and start_date <= parse_iso(o.get("created_on")) <= end_date
+        ]
+
+        # STRICT month filtering: return filtered set (even if empty)
+        orders = filtered
+
+    except Exception:
+        # Parsing failed → ignore filter entirely
+        pass
 
     # Normalize for VF
     return {
