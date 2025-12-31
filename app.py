@@ -441,31 +441,31 @@ async def vf_orders_list(body: OrderListBody):
     orders = data.get("orders", [])
 
     # OPTIONAL date-range filtering (safe, non-breaking)
-if getattr(body, "approxOrderDateText", None):
-    try:
-        start_date, end_date = resolve_date_range(body.approxOrderDateText)
-        filtered = [
-            o for o in orders
-            if o.get("created_on")
-            and start_date <= parse_iso(o.get("created_on")) <= end_date
-        ]
-        # ONLY apply filter if it produced results
-        if filtered:
-            orders = filtered
-    except Exception:
-        # Ignore bad date input entirely
-        pass
+    if getattr(body, "approxOrderDateText", None):
+        try:
+            start_date, end_date = resolve_date_range(body.approxOrderDateText)
+            filtered = [
+                o for o in orders
+                if o.get("created_on")
+                and start_date <= parse_iso(o.get("created_on")) <= end_date
+            ]
+            # ONLY apply filter if it produced results
+            if filtered:
+                orders = filtered
+        except Exception:
+            # Ignore bad date input entirely
+            pass
 
-# Normalize for VF
-return {
-    "orders": [
-        {
-            "orderNumber": o.get("custom_order_number"),
-            "orderDate": o.get("created_on"),
-            "orderStatus": o.get("order_status"),
-            "shippingStatus": o.get("shipping_status"),
-            "orderTotal": o.get("order_total")
-        }
-        for o in orders
-    ]
-}
+    # Normalize for VF
+    return {
+        "orders": [
+            {
+                "orderNumber": o.get("custom_order_number"),
+                "orderDate": o.get("created_on"),
+                "orderStatus": o.get("order_status"),
+                "shippingStatus": o.get("shipping_status"),
+                "orderTotal": o.get("order_total")
+            }
+            for o in orders
+        ]
+    }
