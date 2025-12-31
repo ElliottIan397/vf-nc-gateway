@@ -456,16 +456,16 @@ if getattr(body, "approxOrderDateText", None):
         # Ignore bad date input entirely
         pass
 
-    # Normalize for VF
-    return {
-        "orders": [
-            {
-                "orderNumber": o.get("custom_order_number"),
-                "orderDate": o.get("created_on"),
-                "orderStatus": o.get("order_status"),
-                "shippingStatus": o.get("shipping_status"),
-                "orderTotal": o.get("order_total")
-            }
-            for o in orders
-        ]
-    }
+# Normalize for VF
+return {
+    "orders": [
+        {
+            "orderNumber": o.get("custom_order_number"),
+            "orderDate": o.get("created_on"),
+            "orderStatus": o.get("order_status"),
+            "shippingStatus": o.get("shipping_status"),
+            "orderTotal": o.get("order_total")
+        }
+        for o in orders
+    ]
+}
