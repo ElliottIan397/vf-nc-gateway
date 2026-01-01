@@ -468,6 +468,7 @@ async def vf_order_details(body: OrderDetailsBody):
         "canReorder": data.get("is_re_order_allowed", False),
         "items": [
             {
+                "productId": i.get("product_id"),   # ← THIS IS THE MISSING PIECE
                 "name": i.get("product_name"),
                 "sku": i.get("sku"),
                 "quantity": i.get("quantity"),
