@@ -578,10 +578,11 @@ async def vf_cart_add(body: AddToCartBody):
         }
     )
 
-    return {
-        "ok": True,
-        "productId": body.productId,
-        "quantity": body.quantity,
-        "cart": data
-    }
+return {
+    "ok": True,
+    "productId": body.productId,
+    "addedQuantity": body.quantity,
+    "totalItems": data["model"]["total_products"],
+    "subTotal": data["model"]["sub_total_value"]
+}
 
