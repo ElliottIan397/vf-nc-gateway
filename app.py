@@ -72,6 +72,12 @@ class OrderListBody(BaseModel):
     sessionToken: str
     approxOrderDateText: str | None = None
 
+class AddToCartBody(BaseModel):
+    sessionToken: str
+    productId: int
+    quantity: int = 1
+    shoppingCartType: str = "ShoppingCart"
+
 
 # -------------------------------------------------
 # App
@@ -307,6 +313,35 @@ async def nc_get_frontend_json(
 
     return r.json()
 
+async def nc_frontend_post(
+    path: str,
+    frontend_token: str,
+    params: Dict[str, Any]
+):
+    url = f"{NC_BASE_URL}{path}"
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        r = await client.post(
+            url,
+            headers={
+                "Authorization": frontend_token,
+                "Accept": "application/json"
+            },
+            params=params
+        )
+
+    if r.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "nopCommerce add-to-cart failed",
+                "status": r.status_code,
+                "url": url,
+                "body": r.text
+            }
+        )
+
+    return r.json()
 
 # -------------------------------------------------
 # Routes
@@ -526,5 +561,27 @@ async def vf_orders_list(body: OrderListBody):
             }
             for o in orders
         ]
+    }
+
+@app.post("/vf/cart/add")
+async def vf_cart_add(body: AddToCartBody):
+    sess = require_session_token(body.sessionToken)
+
+    frontend_token = sess["frontend_token"]
+
+    data = await nc_frontend_post(
+        f"/api-frontend/ShoppingCart/AddProductToCartFromCatalog/{body.productId}",
+        frontend_token,
+        params={
+            "shoppingCartType": body.shoppingCartType,
+            "quantity": body.quantity
+        }
+    )
+
+    return {
+        "ok": True,
+        "productId": body.productId,
+        "quantity": body.quantity,
+        "cart": data
     }
 
