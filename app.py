@@ -617,12 +617,12 @@ async def vf_cart_add(body: AddToCartBody):
         }
     )
 
-return {
-    "ok": True,
-    "productId": body.productId,
-    "addedQuantity": body.quantity,
-    "totalItems": data["model"]["total_products"],
-    "subTotal": data["model"]["sub_total_value"]
+    return {
+        "ok": True,
+        "productId": body.productId,
+        "addedQuantity": body.quantity,
+        "totalItems": data["model"]["total_products"],
+        "subTotal": data["model"]["sub_total_value"]
 }
 
 @app.post("/vf/cart/update")
