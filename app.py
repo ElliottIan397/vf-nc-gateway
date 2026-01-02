@@ -86,6 +86,8 @@ class UpdateCartBody(BaseModel):
     sessionToken: str
     items: list[CartUpdateItem]
 
+class CartGetBody(BaseModel):
+    sessionToken: str
 
 
 # -------------------------------------------------
@@ -650,4 +652,37 @@ async def vf_cart_update(body: UpdateCartBody):
         "updatedItems": body.items,
         "totalItems": data["model"]["total_products"],
         "subTotal": data["model"]["sub_total_value"]
+    }
+
+@app.post("/vf/cart")
+async def vf_cart_get(body: CartGetBody):
+    sess = require_session_token(body.sessionToken)
+    frontend_token = sess["frontend_token"]
+
+    data = await nc_get_frontend_json(
+        "/api-frontend/ShoppingCart/Cart",
+        headers={
+            "Authorization": frontend_token,
+            "Accept": "application/json"
+        }
+    )
+
+    model = data.get("model", {})
+
+    return {
+        "items": [
+            {
+                "cartItemId": i.get("id"),
+                "productId": i.get("product_id"),
+                "name": i.get("product_name"),
+                "quantity": i.get("quantity"),
+                "unitPrice": i.get("unit_price_value"),
+                "lineTotal": i.get("unit_price_value", 0) * i.get("quantity", 0)
+            }
+            for i in model.get("items", [])
+        ],
+        "totalItems": model.get("total_products"),
+        "subTotal": model.get("sub_total_value"),
+        "canCheckout": model.get("display_checkout_button", False),
+        "isGuest": model.get("current_customer_is_guest", True)
     }
