@@ -78,6 +78,15 @@ class AddToCartBody(BaseModel):
     quantity: int = 1
     shoppingCartType: str = "ShoppingCart"
 
+class CartUpdateItem(BaseModel):
+    cartItemId: int
+    quantity: int
+
+class UpdateCartBody(BaseModel):
+    sessionToken: str
+    items: list[CartUpdateItem]
+
+
 
 # -------------------------------------------------
 # App
@@ -343,6 +352,36 @@ async def nc_frontend_post(
 
     return r.json()
 
+async def nc_frontend_post_form(
+    path: str,
+    frontend_token: str,
+    payload: dict
+):
+    url = f"{NC_BASE_URL}{path}"
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        r = await client.post(
+            url,
+            headers={
+                "Authorization": frontend_token,
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
+            json=payload
+        )
+
+    if r.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "nopCommerce update-cart failed",
+                "status": r.status_code,
+                "body": r.text
+            }
+        )
+
+    return r.json()
+
 # -------------------------------------------------
 # Routes
 # -------------------------------------------------
@@ -586,3 +625,29 @@ return {
     "subTotal": data["model"]["sub_total_value"]
 }
 
+@app.post("/vf/cart/update")
+async def vf_cart_update(body: UpdateCartBody):
+    sess = require_session_token(body.sessionToken)
+    frontend_token = sess["frontend_token"]
+
+    payload = {}
+    ids = []
+
+    for item in body.items:
+        ids.append(str(item.cartItemId))
+        payload[f"itemquantity{item.cartItemId}"] = str(item.quantity)
+
+    payload["updatecartitemids"] = ",".join(ids)
+
+    data = await nc_frontend_post_form(
+        "/api-frontend/ShoppingCart/UpdateCart",
+        frontend_token,
+        payload
+    )
+
+    return {
+        "ok": True,
+        "updatedItems": body.items,
+        "totalItems": data["model"]["total_products"],
+        "subTotal": data["model"]["sub_total_value"]
+    }
