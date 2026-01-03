@@ -688,7 +688,7 @@ async def vf_cart_get(body: CartGetBody):
     }
 
 @app.get("/vf/cart")
-async def vf_cart_get_qp(sessionToken: str):
+async def vf_cart_get(sessionToken: str):
     sess = require_session_token(sessionToken)
     frontend_token = sess["frontend_token"]
 
@@ -700,22 +700,6 @@ async def vf_cart_get_qp(sessionToken: str):
         }
     )
 
-    model = data.get("model", {})
+    # 🔴 TEMPORARY: return raw payload exactly as NOP sends it
+    return data
 
-    return {
-        "items": [
-            {
-                "cartItemId": i.get("id"),
-                "productId": i.get("product_id"),
-                "name": i.get("product_name"),
-                "quantity": i.get("quantity"),
-                "unitPrice": i.get("unit_price_value"),
-                "lineTotal": i.get("unit_price_value", 0) * i.get("quantity", 0)
-            }
-            for i in model.get("items", [])
-        ],
-        "totalItems": model.get("total_products"),
-        "subTotal": model.get("sub_total_value"),
-        "canCheckout": model.get("display_checkout_button", False),
-        "isGuest": model.get("current_customer_is_guest", True)
-    }
