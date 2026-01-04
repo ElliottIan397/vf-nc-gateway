@@ -644,46 +644,43 @@ async def vf_cart_add(body: AddToCartBody):
 
 @app.post("/vf/cart/update")
 async def vf_cart_update(body: UpdateCartBody):
-    sess = require_session_token(body.sessionToken)
-    frontend_token = sess["frontend_token"]
+    try:
+        sess = require_session_token(body.sessionToken)
+        frontend_token = sess["frontend_token"]
 
-    # 1. READ FULL CART
-    cart = await nc_get_frontend_json(
-        "/api-frontend/ShoppingCart/Cart",
-        headers={
-            "Authorization": frontend_token,
-            "Accept": "application/json"
-        }
-    )
+        cart = await nc_get_frontend_json(
+            "/api-frontend/ShoppingCart/Cart",
+            headers={
+                "Authorization": frontend_token,
+                "Accept": "application/json"
+            }
+        )
 
-    # 2. NORMALIZE CART ITEMS
-    cart_items = [
-        {
-            "cartItemId": i["id"],
-            "quantity": i["quantity"]
-        }
-        for i in cart.get("items", [])
-    ]
+        cart_items = [
+            {
+                "cartItemId": i["id"],
+                "quantity": i["quantity"]
+            }
+            for i in cart.get("items", [])
+        ]
 
-    # 3. BUILD FULL UPDATE PAYLOAD
-    payload = build_updatecart_payload(
-        cart_items,
-        body.cartItemId,
-        body.quantity
-    )
+        payload = build_updatecart_payload(
+            cart_items,
+            body.cartItemId,
+            body.quantity
+        )
 
-    data = await nc_frontend_post_form(
-        "/api-frontend/ShoppingCart/UpdateCart",
-        frontend_token,
-        payload
-    )
+        data = await nc_frontend_post_form(
+            "/api-frontend/ShoppingCart/UpdateCart",
+            frontend_token,
+            payload
+        )
 
-    return {
-        "ok": True,
-        "updatedItems": body.items,
-        "totalItems": data["model"]["total_products"],
-        "subTotal": data["model"]["sub_total_value"]
-    }
+        return {"ok": True}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/vf/cart")
 async def vf_cart_get(body: CartGetBody):
