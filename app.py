@@ -366,8 +366,7 @@ async def nc_frontend_post_form(
             url,
             headers={
                 "Authorization": frontend_token,
-                "Accept": "application/json",
-                "Content-Type": "application/x-www-form-urlencoded"
+                "Accept": "application/json"
             },
             data=payload
         )
