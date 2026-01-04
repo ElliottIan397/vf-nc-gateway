@@ -668,7 +668,7 @@ async def vf_cart_get(body: CartGetBody):
         }
     )
 
-    model = data.get("model", {})
+    model = data
 
     return {
         "items": [
