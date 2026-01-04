@@ -381,9 +381,10 @@ async def nc_frontend_post_form(
             url,
             headers={
                 "Authorization": frontend_token,
-                "Accept": "application/json"
+                "Accept": "application/json",
+                "Content-Type": "application/json-patch+json"
             },
-            data=payload
+            json=payload
         )
 
     if r.status_code >= 400:
