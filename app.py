@@ -12,6 +12,9 @@ from datetime import datetime, timedelta
 import calendar
 import dateparser
 
+from datetime import datetime, timedelta
+import dateparser
+
 # -------------------------------------------------
 # Config (ENV)
 # -------------------------------------------------
@@ -187,9 +190,21 @@ async def nc_get_json(
 
     return r.json()
 
-from datetime import datetime, timedelta
-import dateparser
 
+# ✅ ADD THIS HERE (top-level, no indentation)
+def build_updatecart_payload(cart_items, target_id, new_qty):
+    payload = {}
+    ids = []
+
+    for item in cart_items:
+        cid = item["cartItemId"]
+        qty = new_qty if cid == target_id else item["quantity"]
+        payload[f"itemquantity{cid}"] = str(qty)
+        ids.append(str(cid))
+
+    payload["updatecartitemids"] = ",".join(ids)
+    payload["removefromcart"] = ""
+    return payload
 
 def parse_iso(date_str: str) -> datetime:
     """
