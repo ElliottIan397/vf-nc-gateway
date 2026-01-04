@@ -426,12 +426,14 @@ async def nc_frontend_post_form(
 
     return r.json()
 
-async def nc_add_to_wishlist(frontend_token: str, customer_guid: str, product_id: int):
-    url = f"{NC_BASE_URL}/api-frontend/Wishlist/AddProductToWishlist"
+async def nc_update_wishlist(frontend_token: str, product_ids: list[int]):
+    if not product_ids:
+        return None  # nothing to do
+
+    url = f"{NC_BASE_URL}/api-frontend/Wishlist/UpdateWishlist"
 
     payload = {
-        "customerGuid": customer_guid,
-        "productId": product_id
+        "addtowishlist": ",".join(str(pid) for pid in product_ids)
     }
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
@@ -440,16 +442,16 @@ async def nc_add_to_wishlist(frontend_token: str, customer_guid: str, product_id
             headers={
                 "Authorization": frontend_token,
                 "Accept": "application/json",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json-patch+json",
             },
             json=payload
         )
 
     if r.status_code >= 400:
-        # silent failure – wishlist must not block cart flow
-        return False
+        # wishlist must NEVER block cart flow
+        return None
 
-    return True
+    return r.json()
 
 # -------------------------------------------------
 # Routes
