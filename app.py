@@ -433,7 +433,8 @@ async def nc_update_wishlist(frontend_token: str, product_ids: list[int]):
     url = f"{NC_BASE_URL}/api-frontend/Wishlist/UpdateWishlist"
 
     payload = {
-        "addtowishlist": ",".join(str(pid) for pid in product_ids)
+        "addtowishlist": ",".join(str(pid) for pid in product_ids),
+        "updatewishlist": "true"
     }
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
