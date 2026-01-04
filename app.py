@@ -647,15 +647,30 @@ async def vf_cart_update(body: UpdateCartBody):
     sess = require_session_token(body.sessionToken)
     frontend_token = sess["frontend_token"]
 
-    payload = {}
-    ids = []
+    # 1. READ FULL CART
+    cart = await nc_get_frontend_json(
+        "/api-frontend/ShoppingCart/Cart",
+        headers={
+            "Authorization": frontend_token,
+            "Accept": "application/json"
+        }
+    )
 
-    for item in body.items:
-        ids.append(str(item.cartItemId))
-        payload[f"itemquantity{item.cartItemId}"] = str(item.quantity)
+    # 2. NORMALIZE CART ITEMS
+    cart_items = [
+        {
+            "cartItemId": i["id"],
+            "quantity": i["quantity"]
+        }
+        for i in cart.get("items", [])
+    ]
 
-    payload["updatecartitemids"] = ",".join(ids)
-    payload["removefromcart"] = ""   # 🔴 REQUIRED by nopCommerce
+    # 3. BUILD FULL UPDATE PAYLOAD
+    payload = build_updatecart_payload(
+        cart_items,
+        body.cartItemId,
+        body.quantity
+    )
 
     data = await nc_frontend_post_form(
         "/api-frontend/ShoppingCart/UpdateCart",
