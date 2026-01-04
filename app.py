@@ -426,6 +426,31 @@ async def nc_frontend_post_form(
 
     return r.json()
 
+async def nc_add_to_wishlist(frontend_token: str, customer_guid: str, product_id: int):
+    url = f"{NC_BASE_URL}/api-frontend/Wishlist/AddProductToWishlist"
+
+    payload = {
+        "customerGuid": customer_guid,
+        "productId": product_id
+    }
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        r = await client.post(
+            url,
+            headers={
+                "Authorization": frontend_token,
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
+            json=payload
+        )
+
+    if r.status_code >= 400:
+        # silent failure – wishlist must not block cart flow
+        return False
+
+    return True
+
 # -------------------------------------------------
 # Routes
 # -------------------------------------------------
@@ -776,4 +801,50 @@ async def vf_wishlist_read(body: WishlistReadBody):
             }
             for i in data.get("items", [])
         ]
+    }
+
+@app.post("/vf/wishlist/sync")
+async def vf_wishlist_sync(body: WishlistReadBody):
+    sess = require_session_token(body.sessionToken)
+    frontend_token = sess["frontend_token"]
+
+    # 1. READ CART
+    cart = await nc_get_frontend_json(
+        "/api-frontend/ShoppingCart/Cart",
+        headers={
+            "Authorization": frontend_token,
+            "Accept": "application/json"
+        }
+    )
+
+    cart_products = {
+        i["product_id"]
+        for i in cart.get("items", [])
+    }
+
+    if not cart_products:
+        return {"added": 0, "skipped": 0}
+
+    # 2. READ WISHLIST
+    wishlist = await nc_get_wishlist(frontend_token)
+
+    customer_guid = wishlist.get("customer_guid")
+    wishlist_products = {
+        i.get("product_id")
+        for i in wishlist.get("items", [])
+    }
+
+    # 3. DIFF
+    to_add = cart_products - wishlist_products
+
+    # 4. ADD MISSING ITEMS
+    added = 0
+    for pid in to_add:
+        ok = await nc_add_to_wishlist(frontend_token, customer_guid, pid)
+        if ok:
+            added += 1
+
+    return {
+        "added": added,
+        "skipped": len(cart_products) - added
     }
