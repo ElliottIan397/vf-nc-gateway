@@ -92,6 +92,9 @@ class UpdateCartBody(BaseModel):
 class CartGetBody(BaseModel):
     sessionToken: str
 
+class WishlistReadBody(BaseModel):
+    sessionToken: str
+
 
 # -------------------------------------------------
 # App
@@ -184,6 +187,30 @@ async def nc_get_json(
                 "error": "nopCommerce GET failed",
                 "status": r.status_code,
                 "url": url,
+                "body": r.text
+            }
+        )
+
+    return r.json()
+
+async def nc_get_wishlist(frontend_token: str):
+    url = f"{NC_BASE_URL}/api-frontend/Wishlist/Wishlist"
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        r = await client.get(
+            url,
+            headers={
+                "Authorization": frontend_token,
+                "Accept": "application/json"
+            }
+        )
+
+    if r.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "nopCommerce wishlist read failed",
+                "status": r.status_code,
                 "body": r.text
             }
         )
@@ -733,3 +760,20 @@ async def vf_cart_get(sessionToken: str):
     # 🔴 TEMPORARY: return raw payload exactly as NOP sends it
     return data
 
+@app.post("/vf/wishlist")
+async def vf_wishlist_read(body: WishlistReadBody):
+    sess = require_session_token(body.sessionToken)
+    frontend_token = sess["frontend_token"]
+
+    data = await nc_get_wishlist(frontend_token)
+
+    return {
+        "customerGuid": data.get("customer_guid"),
+        "items": [
+            {
+                "productId": i.get("product_id"),
+                "name": i.get("product_name")
+            }
+            for i in data.get("items", [])
+        ]
+    }
