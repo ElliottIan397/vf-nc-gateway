@@ -664,11 +664,13 @@ async def vf_cart_update(body: UpdateCartBody):
             for i in cart.get("items", [])
         ]
 
+        target = body.items[0]   # single-item update
         payload = build_updatecart_payload(
             cart_items,
-            body.cartItemId,
-            body.quantity
+            target.cartItemId,
+            target.quantity
         )
+
 
         data = await nc_frontend_post_form(
             "/api-frontend/ShoppingCart/UpdateCart",
