@@ -640,6 +640,7 @@ async def vf_cart_update(body: UpdateCartBody):
         payload[f"itemquantity{item.cartItemId}"] = str(item.quantity)
 
     payload["updatecartitemids"] = ",".join(ids)
+    payload["removefromcart"] = ""   # 🔴 REQUIRED by nopCommerce
 
     data = await nc_frontend_post_form(
         "/api-frontend/ShoppingCart/UpdateCart",
