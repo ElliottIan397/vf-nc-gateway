@@ -839,12 +839,11 @@ async def vf_wishlist_sync(body: WishlistReadBody):
     # 3. DIFF
     to_add = cart_products - wishlist_products
 
-    # 4. ADD MISSING ITEMS
-    added = 0
-    for pid in to_add:
-        ok = await nc_add_to_wishlist(frontend_token, customer_guid, pid)
-        if ok:
-            added += 1
+    # 4. ADD MISSING ITEMS (BULK)
+    await nc_update_wishlist(frontend_token, list(to_add))
+
+    added = len(to_add)
+
 
     return {
         "added": added,
