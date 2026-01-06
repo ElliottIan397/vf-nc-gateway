@@ -316,6 +316,17 @@ async def get_admin_token() -> str:
         return ADMIN_TOKEN
 
 # -------------------------------------------------
+# nopCommerce shipment helpers
+# -------------------------------------------------
+async def nc_get_shipment_items(shipment_id: int):
+    token = await get_admin_token()
+
+    return await nc_get_json(
+        f"/api-backend/ShipmentItem/GetByShipmentId/{shipment_id}",
+        headers={"Authorization": token}
+    )
+
+# -------------------------------------------------
 # Pricing
 # -------------------------------------------------
 async def get_final_price(
@@ -563,6 +574,28 @@ async def vf_order_details(body: OrderDetailsBody):
     # -------------------------------------------------
     shipments = data.get("shipments", []) or []
 
+    from collections import defaultdict
+
+    shipment_items = []
+
+    for s in shipments:
+        sid = s.get("id")
+        if not sid:
+            continue
+
+        items = await nc_get_shipment_items(sid)
+
+        for i in items:
+            shipment_items.append({
+                "orderItemId": i.get("order_item_id"),
+                "quantityShipped": i.get("quantity", 0)
+            })
+
+    shipped_map = defaultdict(int)
+
+    for si in shipment_items:
+        shipped_map[si["orderItemId"]] += si["quantityShipped"]
+        
     shipped_dates = [
         s.get("shipped_date")
         for s in shipments
@@ -587,6 +620,31 @@ async def vf_order_details(body: OrderDetailsBody):
     # -------------------------------------------------
     # Normalize response
     # -------------------------------------------------
+
+    normalized_items = []
+
+    for i in data.get("items", []):
+        order_item_id = i.get("id")
+        ordered = i.get("quantity", 0)
+        shipped = shipped_map.get(order_item_id, 0)
+
+        if shipped == 0:
+            status = "backorder"
+        elif shipped < ordered:
+            status = "partially_shipped"
+        else:
+            status = "shipped"
+
+        normalized_items.append({
+            "orderItemId": order_item_id,
+            "productId": i.get("product_id"),
+            "sku": i.get("sku"),
+            "name": i.get("product_name"),
+            "orderedQty": ordered,
+            "shippedQty": shipped,
+            "status": status
+        })
+
     return {
         "orderNumber": data.get("custom_order_number"),
         "orderDate": data.get("created_on"),
@@ -612,16 +670,9 @@ async def vf_order_details(body: OrderDetailsBody):
         "orderTotal": data.get("order_total"),
         "canReturn": data.get("is_return_request_allowed", False),
         "canReorder": data.get("is_re_order_allowed", False),
-        "items": [
-            {
-                "productId": i.get("product_id"),   # ← THIS IS THE MISSING PIECE
-                "name": i.get("product_name"),
-                "sku": i.get("sku"),
-                "quantity": i.get("quantity"),
-                "price": i.get("unit_price")
-            }
-            for i in data.get("items", [])
-        ]
+
+        # ✅ THIS IS STEP 2D
+        "items": normalized_items
     }
 
 
