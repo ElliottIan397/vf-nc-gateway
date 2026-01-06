@@ -608,7 +608,22 @@ async def vf_create_rma(body: CreateRmaBody):
     )
 
     # -------------------------------------------------
-    # 3. Find target item & validate ownership
+    # 3. Resolve backend order (REQUIRED for customer_id)
+    # -------------------------------------------------
+    order_id = order_data.get("id")
+    if not order_id:
+        raise HTTPException(status_code=500, detail="Order ID not found")
+
+    backend_order = await nc_get_backend_json(
+        f"/api-backend/Order/Get/{order_id}"
+    )
+
+    customer_id = backend_order.get("customer_id")
+    if not customer_id:
+        raise HTTPException(status_code=500, detail="Customer ID not found")
+
+    # -------------------------------------------------
+    # 4. Find target item & validate ownership
     # -------------------------------------------------
     target_item = None
     for i in order_data.get("items", []):
@@ -625,7 +640,7 @@ async def vf_create_rma(body: CreateRmaBody):
         raise HTTPException(status_code=400, detail="Invalid return quantity")
 
     # -------------------------------------------------
-    # 4. Get shipped quantity (reuse shipment logic)
+    # 5. Get shipped quantity (reuse shipment logic)
     # -------------------------------------------------
     shipments = order_data.get("shipments", []) or []
 
@@ -647,16 +662,12 @@ async def vf_create_rma(body: CreateRmaBody):
         )
 
     # -------------------------------------------------
-    # 5. Resolve customer + store
+    # 6. Resolve store
     # -------------------------------------------------
-    customer_id = order_data.get("customer_id")
-    if not customer_id:
-        raise HTTPException(status_code=500, detail="Customer ID not found")
-
     STORE_ID = int(os.getenv("NOP_STORE_ID", "2"))
 
     # -------------------------------------------------
-    # 6. Build minimal backend DTO (WHITELISTED)
+    # 7. Build minimal backend DTO (WHITELISTED)
     # -------------------------------------------------
     payload = {
         "store_id": STORE_ID,
@@ -669,7 +680,7 @@ async def vf_create_rma(body: CreateRmaBody):
     }
 
     # -------------------------------------------------
-    # 7. Create RMA
+    # 8. Create RMA
     # -------------------------------------------------
     result = await nc_create_return_request(payload)
 
@@ -678,7 +689,6 @@ async def vf_create_rma(body: CreateRmaBody):
         "returnRequestId": result.get("id"),
         "message": "Return request submitted successfully"
     }
-
 
 @app.post("/vf/orders/details")
 async def vf_order_details(body: OrderDetailsBody):
