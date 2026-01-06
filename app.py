@@ -39,6 +39,8 @@ NC_ADMIN_PASSWORD = os.getenv("NC_ADMIN_PASSWORD", "")
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "3600"))
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "12.0"))
 
+NOP_STORE_ID = int(os.getenv("NOP_STORE_ID", "2"))
+
 # -------------------------------------------------
 # In-memory stores (swap to Redis later)
 # -------------------------------------------------
@@ -95,6 +97,14 @@ class CartGetBody(BaseModel):
 class WishlistReadBody(BaseModel):
     sessionToken: str
 
+class CreateRmaBody(BaseModel):
+    sessionToken: str
+    orderNumber: str
+    orderItemId: int
+    quantity: int
+    reason: str
+    action: str
+    comments: Optional[str] = ""
 
 # -------------------------------------------------
 # App
@@ -327,6 +337,35 @@ async def nc_get_shipment_items(shipment_id: int):
     )
 
 # -------------------------------------------------
+# nopCommerce backend RMA helpers
+# -------------------------------------------------
+async def nc_create_return_request(payload: dict):
+    token = await get_admin_token()
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        r = await client.post(
+            f"{NC_BASE_URL}/api-backend/ReturnRequest/Create",
+            headers={
+                "Authorization": token,
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
+            json=payload
+        )
+
+    if r.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "nopCommerce ReturnRequest/Create failed",
+                "status": r.status_code,
+                "body": r.text
+            }
+        )
+
+    return r.json()
+
+# -------------------------------------------------
 # Pricing
 # -------------------------------------------------
 async def get_final_price(
@@ -548,6 +587,98 @@ async def vf_prices(body: PricesBody):
         "prices": prices,
         "errors": errors
     }
+
+@app.post("/vf/rma/create")
+async def vf_create_rma(body: CreateRmaBody):
+    # -------------------------------------------------
+    # 1. Validate session
+    # -------------------------------------------------
+    sess = require_session_token(body.sessionToken)
+    frontend_token = sess["frontend_token"]
+
+    # -------------------------------------------------
+    # 2. Load order details (frontend, customer-scoped)
+    # -------------------------------------------------
+    order_data = await nc_get_frontend_json(
+        f"/api-frontend/Order/Details/{body.orderNumber}",
+        headers={
+            "Authorization": frontend_token,
+            "Accept": "application/json"
+        }
+    )
+
+    # -------------------------------------------------
+    # 3. Find target item & validate ownership
+    # -------------------------------------------------
+    target_item = None
+    for i in order_data.get("items", []):
+        if i.get("id") == body.orderItemId:
+            target_item = i
+            break
+
+    if not target_item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+
+    ordered_qty = target_item.get("quantity", 0)
+
+    if body.quantity <= 0 or body.quantity > ordered_qty:
+        raise HTTPException(status_code=400, detail="Invalid return quantity")
+
+    # -------------------------------------------------
+    # 4. Get shipped quantity (reuse shipment logic)
+    # -------------------------------------------------
+    shipments = order_data.get("shipments", []) or []
+
+    shipped_qty = 0
+    for s in shipments:
+        sid = s.get("id")
+        if not sid:
+            continue
+
+        items = await nc_get_shipment_items(sid)
+        for si in items:
+            if si.get("order_item_id") == body.orderItemId:
+                shipped_qty += si.get("quantity", 0)
+
+    if shipped_qty < body.quantity:
+        raise HTTPException(
+            status_code=400,
+            detail="Return quantity exceeds shipped quantity"
+        )
+
+    # -------------------------------------------------
+    # 5. Resolve customer + store
+    # -------------------------------------------------
+    customer_id = order_data.get("customer_id")
+    if not customer_id:
+        raise HTTPException(status_code=500, detail="Customer ID not found")
+
+    STORE_ID = int(os.getenv("NOP_STORE_ID", "2"))
+
+    # -------------------------------------------------
+    # 6. Build minimal backend DTO (WHITELISTED)
+    # -------------------------------------------------
+    payload = {
+        "store_id": STORE_ID,
+        "order_item_id": body.orderItemId,
+        "customer_id": customer_id,
+        "quantity": body.quantity,
+        "reason_for_return": body.reason,
+        "requested_action": body.action,
+        "customer_comments": body.comments or ""
+    }
+
+    # -------------------------------------------------
+    # 7. Create RMA
+    # -------------------------------------------------
+    result = await nc_create_return_request(payload)
+
+    return {
+        "ok": True,
+        "returnRequestId": result.get("id"),
+        "message": "Return request submitted successfully"
+    }
+
 
 @app.post("/vf/orders/details")
 async def vf_order_details(body: OrderDetailsBody):
