@@ -345,7 +345,7 @@ async def nc_get_backend_json(path: str) -> Any:
     return await nc_get_json(
         path,
         headers={
-            "Authorization": f"Bearer {token}",
+            "Authorization": token,
             "Accept": "application/json"
         }
     )
@@ -723,44 +723,44 @@ async def vf_create_rma(body: CreateRmaBody):
         "return_request_status_id": 0  # ✅ Pending
     }
 
-# -------------------------------------------------
-# 8. Create RMA
-# -------------------------------------------------
-result = await nc_create_return_request(payload)
+    # -------------------------------------------------
+    # 8. Create RMA
+    # -------------------------------------------------
+    result = await nc_create_return_request(payload)
 
-rma_id = result.get("id")
-if not rma_id:
-    raise HTTPException(status_code=500, detail="RMA ID not returned from Create")
+    rma_id = result.get("id")
+    if not rma_id:
+        raise HTTPException(status_code=500, detail="RMA ID not returned from Create")
 
-# -------------------------------------------------
-# 9. Patch custom_number via Update
-# -------------------------------------------------
-update_payload = {
-    "id": rma_id,
-    "custom_number": str(rma_id),
-    "store_id": STORE_ID,
-    "order_item_id": body.orderItemId,
-    "customer_id": customer_id,
-    "quantity": body.quantity,
-    "returned_quantity": 0,
-    "reason_for_return": body.reason,
-    "requested_action": body.action,
-    "customer_comments": body.comments or "",
-    "uploaded_file_id": 0,
-    "staff_notes": "",
-    "return_request_status_id": 0
-}
+    # -------------------------------------------------
+    # 9. Patch custom_number via Update
+    # -------------------------------------------------
+    update_payload = {
+        "id": rma_id,
+        "custom_number": str(rma_id),
+        "store_id": STORE_ID,
+        "order_item_id": body.orderItemId,
+        "customer_id": customer_id,
+        "quantity": body.quantity,
+        "returned_quantity": 0,
+        "reason_for_return": body.reason,
+        "requested_action": body.action,
+        "customer_comments": body.comments or "",
+        "uploaded_file_id": 0,
+        "staff_notes": "",
+        "return_request_status_id": 0
+    }
 
-await nc_update_return_request(update_payload)
+    await nc_update_return_request(update_payload)
 
-# -------------------------------------------------
-# 10. Respond to VF
-# -------------------------------------------------
-return {
-    "ok": True,
-    "returnRequestId": rma_id,
-    "message": "Return request submitted successfully"
-}
+    # -------------------------------------------------
+    # 10. Respond to VF
+    # -------------------------------------------------
+    return {
+        "ok": True,
+        "returnRequestId": rma_id,
+        "message": "Return request submitted successfully"
+    }
 
 @app.post("/vf/orders/details")
 async def vf_order_details(body: OrderDetailsBody):
