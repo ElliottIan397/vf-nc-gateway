@@ -749,8 +749,7 @@ async def vf_create_rma(body: CreateRmaBody):
         "uploaded_file_id": 0,
         "staff_notes": "",
         "return_request_status_id": 0,
-        "created_on_utc": now_utc,
-        "updated_on_utc": now_utc
+        "created_on_utc": now_utc
     }
 
     await nc_update_return_request(update_payload)
