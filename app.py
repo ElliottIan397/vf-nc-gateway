@@ -693,7 +693,8 @@ async def vf_create_rma(body: CreateRmaBody):
         "quantity": body.quantity,
         "reason_for_return": body.reason,
         "requested_action": body.action,
-        "customer_comments": body.comments or ""
+        "customer_comments": body.comments or "",
+        "return_request_status_id": 0  # ✅ Pending
     }
 
     # -------------------------------------------------
