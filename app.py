@@ -712,6 +712,10 @@ async def vf_create_rma(body: CreateRmaBody):
     # -------------------------------------------------
     # 7. Build minimal backend DTO (WHITELISTED)
     # -------------------------------------------------
+    from datetime import datetime, timezone
+
+    now_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    
     payload = {
         "store_id": STORE_ID,
         "order_item_id": body.orderItemId,
@@ -720,7 +724,9 @@ async def vf_create_rma(body: CreateRmaBody):
         "reason_for_return": body.reason,
         "requested_action": body.action,
         "customer_comments": body.comments or "",
-        "return_request_status_id": 0  # ✅ Pending
+        "return_request_status_id": 0,  # ✅ Pending
+        "created_on_utc": now_utc,
+        "updated_on_utc": now_utc
     }
 
     # -------------------------------------------------
