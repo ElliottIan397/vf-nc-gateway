@@ -601,6 +601,7 @@ async def vf_prices(body: PricesBody):
 
 @app.post("/vf/rma/create")
 async def vf_create_rma(body: CreateRmaBody):
+    print("RMA BODY:", body.dict())
     # -------------------------------------------------
     # 1. Validate session
     # -------------------------------------------------
