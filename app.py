@@ -739,6 +739,12 @@ async def vf_create_rma(body: CreateRmaBody):
         raise HTTPException(status_code=500, detail="RMA ID not returned from Create")
 
     # -------------------------------------------------
+    # 8a. Freeze
+    # -------------------------------------------------    
+    created_utc = result.get("created_on_utc", now_utc)
+    updated_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+  
+    # -------------------------------------------------
     # 9. Patch custom_number via Update
     # -------------------------------------------------
     update_payload = {
