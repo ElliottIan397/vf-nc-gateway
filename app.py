@@ -339,6 +339,17 @@ async def nc_get_shipment_items(shipment_id: int):
 # -------------------------------------------------
 # nopCommerce backend RMA helpers
 # -------------------------------------------------
+async def nc_get_backend_json(path: str) -> Any:
+    token = await get_admin_token()
+
+    return await nc_get_json(
+        path,
+        headers={
+            "Authorization": token,
+            "Accept": "application/json"
+        }
+    )
+
 async def nc_create_return_request(payload: dict):
     token = await get_admin_token()
 
