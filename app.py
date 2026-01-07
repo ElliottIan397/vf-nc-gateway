@@ -515,6 +515,32 @@ async def nc_update_wishlist(frontend_token: str, product_ids: list[int]):
 
     return r.json()
 
+async def nc_update_return_request(payload: dict):
+    token = await get_admin_token()
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        r = await client.put(
+            f"{NC_BASE_URL}/api-backend/ReturnRequest/Update",
+            headers={
+                "Authorization": token,
+                "Accept": "application/json",
+                "Content-Type": "application/json-patch+json"
+            },
+            json=payload
+        )
+
+    if r.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "nopCommerce ReturnRequest/Update failed",
+                "status": r.status_code,
+                "body": r.text
+            }
+        )
+
+    return r.json()
+
 # -------------------------------------------------
 # Routes
 # -------------------------------------------------
@@ -697,16 +723,44 @@ async def vf_create_rma(body: CreateRmaBody):
         "return_request_status_id": 0  # ✅ Pending
     }
 
-    # -------------------------------------------------
-    # 8. Create RMA
-    # -------------------------------------------------
-    result = await nc_create_return_request(payload)
+# -------------------------------------------------
+# 8. Create RMA
+# -------------------------------------------------
+result = await nc_create_return_request(payload)
 
-    return {
-        "ok": True,
-        "returnRequestId": result.get("id"),
-        "message": "Return request submitted successfully"
-    }
+rma_id = result.get("id")
+if not rma_id:
+    raise HTTPException(status_code=500, detail="RMA ID not returned from Create")
+
+# -------------------------------------------------
+# 9. Patch custom_number via Update
+# -------------------------------------------------
+update_payload = {
+    "id": rma_id,
+    "custom_number": str(rma_id),
+    "store_id": STORE_ID,
+    "order_item_id": body.orderItemId,
+    "customer_id": customer_id,
+    "quantity": body.quantity,
+    "returned_quantity": 0,
+    "reason_for_return": body.reason,
+    "requested_action": body.action,
+    "customer_comments": body.comments or "",
+    "uploaded_file_id": 0,
+    "staff_notes": "",
+    "return_request_status_id": 0
+}
+
+await nc_update_return_request(update_payload)
+
+# -------------------------------------------------
+# 10. Respond to VF
+# -------------------------------------------------
+return {
+    "ok": True,
+    "returnRequestId": rma_id,
+    "message": "Return request submitted successfully"
+}
 
 @app.post("/vf/orders/details")
 async def vf_order_details(body: OrderDetailsBody):
