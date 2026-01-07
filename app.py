@@ -345,7 +345,7 @@ async def nc_get_backend_json(path: str) -> Any:
     return await nc_get_json(
         path,
         headers={
-            "Authorization": token,
+            "Authorization": f"Bearer {token}",
             "Accept": "application/json"
         }
     )
