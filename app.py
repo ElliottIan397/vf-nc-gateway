@@ -632,7 +632,7 @@ async def vf_create_rma(body: CreateRmaBody):
         raise HTTPException(status_code=500, detail="Order ID not found")
 
     backend_order = await nc_get_backend_json(
-        f"/api-backend/Order/Get/{order_id}"
+        f"/api-backend/Order/GetById/{order_id}"
     )
 
     customer_id = backend_order.get("customer_id")
