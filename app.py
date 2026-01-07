@@ -599,9 +599,14 @@ async def vf_prices(body: PricesBody):
         "errors": errors
     }
 
+import logging
+
+logger = logging.getLogger("uvicorn.error")
+
 @app.post("/vf/rma/create")
 async def vf_create_rma(body: CreateRmaBody):
-    print("RMA BODY:", body.dict())
+    logger.error(f"RMA BODY RECEIVED: {body.dict()}")
+
     # -------------------------------------------------
     # 1. Validate session
     # -------------------------------------------------
