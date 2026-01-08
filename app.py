@@ -358,6 +358,20 @@ async def nc_get_shipments_by_order_id(order_id: int):
         }
     )
 
+# -------------------------------------------------
+# NEW: Backend RMA Reason Mapping
+# -------------------------------------------------
+
+def map_rma_status(status_id: int) -> str:
+    return {
+        0: "Pending",
+        10: "Received",
+        20: "Return Authorized",
+        30: "Item(s) Repaired",
+        40: "Item(s) Refunded",
+        50: "Request Rejected",
+        60: "Cancelled",
+    }.get(status_id, "Unknown")
 
 async def nc_get_hydrated_shipments_for_order(order_id: int):
     """
@@ -682,7 +696,7 @@ def build_order_item_rma_map(rmas: list):
             "quantity": r.get("quantity", 0),
             "returnedQuantity": r.get("returned_quantity", 0),
             "statusId": r.get("return_request_status_id"),
-            "status": r.get("return_request_status_id"),  # map to label later if desired
+            "status": map_rma_status(r.get("return_request_status_id")),
             "reason": r.get("reason_for_return"),
             "requestedAction": r.get("requested_action"),
             "createdOn": r.get("created_on_utc"),
