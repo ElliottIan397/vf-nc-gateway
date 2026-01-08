@@ -378,8 +378,8 @@ async def nc_get_hydrated_shipments_for_order(order_id: int):
         hydrated.append({
             "shipmentId": shipment_id,
             "trackingNumber": s.get("tracking_number"),
-            "shippedDate": s.get("shipped_date"),
-            "deliveryDate": s.get("delivery_date"),
+            "shippedDate": s.get("shipped_date_utc"),
+            "deliveryDate": s.get("delivery_date_utc"),
             "items": [
                 {
                     "orderItemId": i.get("order_item_id"),
