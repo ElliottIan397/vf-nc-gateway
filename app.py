@@ -624,6 +624,52 @@ async def nc_update_return_request(payload: dict):
     except ValueError:
         return None
 
+# -------------------------------------------------
+# NEW: Backend RMA read helpers (ORDERS)
+# -------------------------------------------------
+
+async def nc_get_rmas_by_order_id(order_id: int):
+    """
+    Returns all return requests (RMAs) for a given order ID.
+    Backend = source of truth.
+    """
+    token = await get_admin_token()
+
+    return await nc_get_json(
+        "/api-backend/ReturnRequest/GetAll",
+        headers={
+            "Authorization": token,
+            "Accept": "application/json"
+        },
+        params={
+            "orderId": order_id
+        }
+    )
+
+
+def build_order_item_rma_map(rmas: list):
+    """
+    Converts RMA list into:
+    { orderItemId: [ rma_summary, ... ] }
+    """
+
+    rma_map = {}
+
+    for r in rmas or []:
+        order_item_id = r.get("order_item_id")
+        if not order_item_id:
+            continue
+
+        rma_map.setdefault(order_item_id, []).append({
+            "rmaId": r.get("id"),
+            "quantity": r.get("quantity", 0),
+            "statusId": r.get("return_request_status_id"),
+            "status": r.get("return_request_status"),
+            "createdOn": r.get("created_on_utc"),
+            "updatedOn": r.get("updated_on_utc"),
+        })
+
+    return rma_map
 
 # -------------------------------------------------
 # Routes
