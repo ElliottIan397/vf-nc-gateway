@@ -862,14 +862,16 @@ async def vf_create_rma(body: CreateRmaBody):
 
 @app.post("/vf/orders/details")
 async def vf_order_details(body: OrderDetailsBody):
-    # Validate session (refreshes TTL)
+    # -------------------------------------------------
+    # 1. Validate session
+    # -------------------------------------------------
     sess = require_session_token(body.sessionToken)
+    frontend_token = sess["frontend_token"]
 
-    # Use CUSTOMER token, not admin
-    frontend_token = sess["frontend_token"]  # token issued at login
-
-    # Call nopCommerce frontend order details
-    data = await nc_get_frontend_json(
+    # -------------------------------------------------
+    # 2. Load frontend order (customer-scoped metadata)
+    # -------------------------------------------------
+    order_data = await nc_get_frontend_json(
         f"/api-frontend/Order/Details/{body.orderNumber}",
         headers={
             "Authorization": frontend_token,
@@ -877,115 +879,90 @@ async def vf_order_details(body: OrderDetailsBody):
         }
     )
 
-    shipping_status = data.get("shipping_status", "")
-    has_shipped = shipping_status.lower() not in ["not yet shipped", ""]
+    order_id = order_data.get("id")
+    if not order_id:
+        raise HTTPException(status_code=500, detail="Order ID not found")
 
     # -------------------------------------------------
-    # NEW: shipment extraction (SAFE, READ-ONLY)
+    # 3. Load backend shipment truth (NEW)
     # -------------------------------------------------
-    shipments = data.get("shipments", []) or []
+    hydrated_shipments = await nc_get_hydrated_shipments_for_order(order_id)
+    fulfillment_map = build_order_item_fulfillment_map(hydrated_shipments)
 
-    from collections import defaultdict
+    # -------------------------------------------------
+    # 4. Normalize order items with fulfillment context
+    # -------------------------------------------------
+    normalized_items = []
 
-    shipment_items = []
+    for item in order_data.get("items", []):
+        order_item_id = item.get("id")
+        ordered_qty = item.get("quantity", 0)
 
-    for s in shipments:
-        sid = s.get("id")
-        if not sid:
-            continue
+        shipments = fulfillment_map.get(order_item_id, [])
 
-        items = await nc_get_shipment_items(sid)
+        shipped_qty = sum(s.get("quantity", 0) for s in shipments)
 
-        for i in items:
-            shipment_items.append({
-                "orderItemId": i.get("order_item_id"),
-                "quantityShipped": i.get("quantity", 0)
-            })
+        if shipped_qty == 0:
+            status = "unshipped"
+        elif shipped_qty < ordered_qty:
+            status = "partially_shipped"
+        else:
+            # fully shipped — check delivery
+            if shipments and all(s.get("deliveryDate") for s in shipments):
+                status = "delivered"
+            else:
+                status = "shipped"
 
-    shipped_map = defaultdict(int)
+        normalized_items.append({
+            "orderItemId": order_item_id,
+            "productId": item.get("product_id"),
+            "sku": item.get("sku"),
+            "name": item.get("product_name"),
+            "orderedQty": ordered_qty,
+            "shippedQty": shipped_qty,
+            "status": status,
+            "shipments": shipments
+        })
 
-    for si in shipment_items:
-        shipped_map[si["orderItemId"]] += si["quantityShipped"]
-        
-    shipped_dates = [
-        s.get("shipped_date")
-        for s in shipments
-        if s.get("shipped_date")
-    ]
+    # -------------------------------------------------
+    # 5. Order-level shipment rollups (informational)
+    # -------------------------------------------------
+    shipped_dates = []
+    delivery_dates = []
+    tracking_numbers = []
 
-    delivery_dates = [
-        s.get("delivery_date")
-        for s in shipments
-        if s.get("delivery_date")
-    ]
-
-    tracking_numbers = [
-        s.get("tracking_number")
-        for s in shipments
-        if s.get("tracking_number")
-    ]
+    for s in hydrated_shipments:
+        if s.get("shippedDate"):
+            shipped_dates.append(s.get("shippedDate"))
+        if s.get("deliveryDate"):
+            delivery_dates.append(s.get("deliveryDate"))
+        if s.get("trackingNumber"):
+            tracking_numbers.append(s.get("trackingNumber"))
 
     latest_shipped_date = max(shipped_dates) if shipped_dates else None
     latest_delivery_date = max(delivery_dates) if delivery_dates else None
 
     # -------------------------------------------------
-    # Normalize response
+    # 6. Respond
     # -------------------------------------------------
-
-    normalized_items = []
-
-    for i in data.get("items", []):
-        order_item_id = i.get("id")
-        ordered = i.get("quantity", 0)
-        shipped = shipped_map.get(order_item_id, 0)
-
-        if shipped == 0:
-            status = "backorder"
-        elif shipped < ordered:
-            status = "partially_shipped"
-        else:
-            status = "shipped"
-
-        normalized_items.append({
-            "orderItemId": order_item_id,
-            "productId": i.get("product_id"),
-            "sku": i.get("sku"),
-            "name": i.get("product_name"),
-            "orderedQty": ordered,
-            "shippedQty": shipped,
-            "status": status
-        })
-
     return {
-        "orderNumber": data.get("custom_order_number"),
-        "orderDate": data.get("created_on"),
-        "orderStatus": data.get("order_status"),
-        "shippingStatus": shipping_status,
-        "hasShipped": has_shipped,
+        "orderNumber": order_data.get("custom_order_number"),
+        "orderDate": order_data.get("created_on"),
+        "orderStatus": order_data.get("order_status"),
+        "shippingStatus": order_data.get("shipping_status"),
+        "paymentMethod": order_data.get("payment_method"),
+        "orderTotal": order_data.get("order_total"),
 
-        # NEW: surfaced shipment info
-        "shipments": [
-            {
-                "id": s.get("id"),
-                "trackingNumber": s.get("tracking_number"),
-                "shippedDate": s.get("shipped_date"),
-                "deliveryDate": s.get("delivery_date"),
-            }
-            for s in shipments
-        ],
         "latestShippedDate": latest_shipped_date,
         "latestDeliveryDate": latest_delivery_date,
         "trackingNumbers": tracking_numbers,
 
-        "paymentMethod": data.get("payment_method"),
-        "orderTotal": data.get("order_total"),
-        "canReturn": data.get("is_return_request_allowed", False),
-        "canReorder": data.get("is_re_order_allowed", False),
+        "canReturn": order_data.get("is_return_request_allowed", False),
+        "canReorder": order_data.get("is_re_order_allowed", False),
 
-        # ✅ THIS IS STEP 2D
+        # ✅ Line-level fulfillment (authoritative)
         "items": normalized_items
     }
-
 
 @app.post("/vf/orders/list")
 async def vf_orders_list(body: OrderListBody):
