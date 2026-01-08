@@ -633,13 +633,12 @@ async def nc_update_return_request(payload: dict):
 
 async def nc_get_rmas_by_order_id(order_id: int):
     """
-    Returns all RMAs.
-    Order-level filtering is NOT possible because RMAs do not expose order_id.
-    Item-level filtering happens later via order_item_id.
+    Returns all RMAs (paged) using the correct nopCommerce endpoint.
+    RMAs are linked to order items via order_item_id.
     """
     token = await get_admin_token()
 
-    url = f"{NC_BASE_URL}/api-backend/ReturnRequest/GetAll"
+    url = f"{NC_BASE_URL}/api-backend/ReturnRequest/Search"
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
         r = await client.get(
@@ -649,7 +648,9 @@ async def nc_get_rmas_by_order_id(order_id: int):
                 "Accept": "application/json"
             },
             params={
-                "storeId": NOP_STORE_ID
+                "storeId": NOP_STORE_ID,
+                "pageIndex": 0,
+                "pageSize": 2147483647  # max, matches Swagger
             }
         )
 
@@ -661,7 +662,6 @@ async def nc_get_rmas_by_order_id(order_id: int):
     except ValueError:
         return []
 
-    # 🔑 Return the actual RMA list (paged response)
     return payload.get("items", [])
 
 def build_order_item_rma_map(rmas: list):
