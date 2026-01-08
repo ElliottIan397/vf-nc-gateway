@@ -156,13 +156,14 @@ async def nc_post_json(
     url = f"{NC_BASE_URL}{path}"
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        r = await client.post(
+        r = await client.get(
             url,
-            content=json.dumps(payload),
             headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                **(headers or {})
+                "Authorization": token,
+                "Accept": "application/json"
+            },
+            params={
+                "storeId": 2  # 🔑 REQUIRED — match Swagger store
             }
         )
 
