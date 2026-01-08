@@ -934,6 +934,11 @@ async def vf_order_details(body: OrderDetailsBody):
     # -------------------------------------------------
     hydrated_shipments = await nc_get_hydrated_shipments_for_order(order_id)
     fulfillment_map = build_order_item_fulfillment_map(hydrated_shipments)
+    # -------------------------------------------------
+    # 3a. Load backend RMAs (read-only)
+    # -------------------------------------------------
+    rmas = await nc_get_rmas_by_order_id(order_id)
+    rma_map = build_order_item_rma_map(rmas)
 
     # -------------------------------------------------
     # 4. Normalize order items with fulfillment context
@@ -958,7 +963,9 @@ async def vf_order_details(body: OrderDetailsBody):
                 status = "delivered"
             else:
                 status = "shipped"
-
+        # RMA summary for this item
+        item_rmas = rma_map.get(order_item_id, [])
+        
         normalized_items.append({
             "orderItemId": order_item_id,
             "productId": item.get("product_id"),
@@ -967,7 +974,8 @@ async def vf_order_details(body: OrderDetailsBody):
             "orderedQty": ordered_qty,
             "shippedQty": shipped_qty,
             "status": status,
-            "shipments": shipments
+            "shipments": shipments,
+            "rmas": item_rmas
         })
 
     # -------------------------------------------------
