@@ -952,6 +952,10 @@ async def vf_order_details(body: OrderDetailsBody):
     # 3a. Load backend RMAs (read-only)
     # -------------------------------------------------
     rmas = await nc_get_rmas_by_order_id(order_id)
+
+    logger.error(f"RMA COUNT FETCHED: {len(rmas)}")
+    logger.error(f"RMA SAMPLE: {rmas[0] if rmas else 'NONE'}")
+
     rma_map = build_order_item_rma_map(rmas)
 
     # -------------------------------------------------
