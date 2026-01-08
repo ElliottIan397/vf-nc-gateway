@@ -539,7 +539,11 @@ async def nc_update_return_request(payload: dict):
             }
         )
 
-    return r.json()
+    try:
+        return r.json()
+    except ValueError:
+        return None
+
 
 # -------------------------------------------------
 # Routes
