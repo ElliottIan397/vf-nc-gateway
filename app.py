@@ -155,17 +155,12 @@ async def nc_post_json(
 ) -> Any:
     url = f"{NC_BASE_URL}{path}"
 
+    req_headers = {"Accept": "application/json"}
+    if headers:
+        req_headers.update(headers)
+
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        r = await client.get(
-            url,
-            headers={
-                "Authorization": token,
-                "Accept": "application/json"
-            },
-            params={
-                "storeId": 2  # 🔑 REQUIRED — match Swagger store
-            }
-        )
+        r = await client.post(url, headers=req_headers, json=payload)
 
     if r.status_code >= 400:
         raise HTTPException(
@@ -178,7 +173,14 @@ async def nc_post_json(
             }
         )
 
-    return r.json()
+    # Some nop endpoints can return empty body; be defensive
+    if not r.content:
+        return {}
+
+    try:
+        return r.json()
+    except ValueError:
+        return {}
 
 
 async def nc_get_json(
@@ -645,6 +647,9 @@ async def nc_get_rmas_by_order_id(order_id: int):
             headers={
                 "Authorization": token,
                 "Accept": "application/json"
+            },
+            params={
+                "storeId": NOP_STORE_ID
             }
         )
 
