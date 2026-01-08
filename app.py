@@ -337,6 +337,86 @@ async def nc_get_shipment_items(shipment_id: int):
     )
 
 # -------------------------------------------------
+# NEW: Backend shipment hydration helpers (ORDERS)
+# -------------------------------------------------
+
+async def nc_get_shipments_by_order_id(order_id: int):
+    """
+    Returns all backend shipments for a given order ID.
+    Backend = source of truth.
+    """
+    token = await get_admin_token()
+
+    return await nc_get_json(
+        f"/api-backend/Shipment/GetByOrderId/{order_id}",
+        headers={
+            "Authorization": token,
+            "Accept": "application/json"
+        }
+    )
+
+
+async def nc_get_hydrated_shipments_for_order(order_id: int):
+    """
+    Fully hydrate shipments for an order:
+    - shipment metadata
+    - per-line quantities
+    - preserves shipment boundaries
+    """
+
+    shipments = await nc_get_shipments_by_order_id(order_id)
+
+    hydrated = []
+
+    for s in shipments or []:
+        shipment_id = s.get("id")
+        if not shipment_id:
+            continue
+
+        items = await nc_get_shipment_items(shipment_id)
+
+        hydrated.append({
+            "shipmentId": shipment_id,
+            "trackingNumber": s.get("tracking_number"),
+            "shippedDate": s.get("shipped_date"),
+            "deliveryDate": s.get("delivery_date"),
+            "items": [
+                {
+                    "orderItemId": i.get("order_item_id"),
+                    "quantity": i.get("quantity", 0)
+                }
+                for i in items or []
+            ]
+        })
+
+    return hydrated
+
+
+def build_order_item_fulfillment_map(hydrated_shipments: list):
+    """
+    Converts hydrated shipments into:
+    { orderItemId: [ shipment_fulfillment, ... ] }
+    """
+
+    fulfillment_map = {}
+
+    for s in hydrated_shipments:
+        for item in s.get("items", []):
+            oid = item.get("orderItemId")
+            if oid is None:
+                continue
+
+            fulfillment_map.setdefault(oid, []).append({
+                "shipmentId": s.get("shipmentId"),
+                "quantity": item.get("quantity", 0),
+                "trackingNumber": s.get("trackingNumber"),
+                "shippedDate": s.get("shippedDate"),
+                "deliveryDate": s.get("deliveryDate"),
+            })
+
+    return fulfillment_map
+
+# -------------------------------------------------
 # nopCommerce backend RMA helpers
 # -------------------------------------------------
 async def nc_get_backend_json(path: str) -> Any:
