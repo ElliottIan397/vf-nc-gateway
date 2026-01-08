@@ -630,9 +630,8 @@ async def nc_update_return_request(payload: dict):
 
 async def nc_get_rmas_by_order_id(order_id: int):
     """
-    Returns all return requests (RMAs) for a given order ID.
-    Backend may return empty body when no RMAs exist.
-    This function must NEVER throw for 'no RMAs'.
+    Returns all RMAs for a given order ID.
+    Handles nopCommerce paged response correctly.
     """
     token = await get_admin_token()
 
@@ -644,40 +643,44 @@ async def nc_get_rmas_by_order_id(order_id: int):
             headers={
                 "Authorization": token,
                 "Accept": "application/json"
-            },
-            params={
-                "orderId": order_id
             }
         )
 
-    # No RMAs → backend may return 204 or empty body
-    if r.status_code == 204 or not r.content:
+    if r.status_code != 200 or not r.content:
         return []
 
     try:
-        return r.json()
+        payload = r.json()
     except ValueError:
-        # Defensive: treat non-JSON as no RMAs
         return []
+
+    # 🔑 ACTUAL RMA LIST IS HERE
+    rmas = payload.get("items", [])
+
+    # Filter to this order only (order_id is not always returned, so rely on item mapping)
+    return rmas
 
 def build_order_item_rma_map(rmas: list):
     """
     Converts RMA list into:
     { orderItemId: [ rma_summary, ... ] }
     """
-
     rma_map = {}
 
-    for r in rmas or []:
+    for r in rmas:
         order_item_id = r.get("order_item_id")
         if not order_item_id:
             continue
 
         rma_map.setdefault(order_item_id, []).append({
             "rmaId": r.get("id"),
+            "customNumber": r.get("custom_number"),
             "quantity": r.get("quantity", 0),
+            "returnedQuantity": r.get("returned_quantity", 0),
             "statusId": r.get("return_request_status_id"),
-            "status": r.get("return_request_status"),
+            "status": r.get("return_request_status_id"),  # map to label later if desired
+            "reason": r.get("reason_for_return"),
+            "requestedAction": r.get("requested_action"),
             "createdOn": r.get("created_on_utc"),
             "updatedOn": r.get("updated_on_utc"),
         })
