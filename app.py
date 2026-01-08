@@ -631,21 +631,34 @@ async def nc_update_return_request(payload: dict):
 async def nc_get_rmas_by_order_id(order_id: int):
     """
     Returns all return requests (RMAs) for a given order ID.
-    Backend = source of truth.
+    Backend may return empty body when no RMAs exist.
+    This function must NEVER throw for 'no RMAs'.
     """
     token = await get_admin_token()
 
-    return await nc_get_json(
-        "/api-backend/ReturnRequest/GetAll",
-        headers={
-            "Authorization": token,
-            "Accept": "application/json"
-        },
-        params={
-            "orderId": order_id
-        }
-    )
+    url = f"{NC_BASE_URL}/api-backend/ReturnRequest/GetAll"
 
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        r = await client.get(
+            url,
+            headers={
+                "Authorization": token,
+                "Accept": "application/json"
+            },
+            params={
+                "orderId": order_id
+            }
+        )
+
+    # No RMAs → backend may return 204 or empty body
+    if r.status_code == 204 or not r.content:
+        return []
+
+    try:
+        return r.json()
+    except ValueError:
+        # Defensive: treat non-JSON as no RMAs
+        return []
 
 def build_order_item_rma_map(rmas: list):
     """
