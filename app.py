@@ -473,6 +473,16 @@ async def nc_create_return_request(payload: dict):
 
     return r.json()
 
+async def nc_get_rmas_by_order_item(order_item_id: int):
+    token = await get_admin_token()
+    return await nc_get_json(
+        f"/api-backend/ReturnRequest/GetAll?orderItemId={order_item_id}",
+        headers={
+            "Authorization": token,
+            "Accept": "application/json"
+        }
+    )
+
 # -------------------------------------------------
 # nopCommerce RMA Canonical Enums & Policy Constraints
 # -------------------------------------------------
@@ -496,6 +506,8 @@ RMA_ACTIONS = {
 
 CANCEL_REASONS = {5, 6}
 RETURN_REASONS = {1, 2, 3, 4}
+
+
 
 # -------------------------------------------------
 # Pricing
@@ -871,6 +883,19 @@ async def vf_create_rma(body: CreateRmaBody):
         raise HTTPException(status_code=400, detail="Invalid return quantity")
 
     # -------------------------------------------------
+    # 4a. Check for existing open RMAs (warning only)
+    # -------------------------------------------------
+    open_rma_warning = False
+
+    existing_rmas = await nc_get_rmas_by_order_item(body.orderItemId)
+
+    if isinstance(existing_rmas, list):
+        for rma in existing_rmas:
+            if rma.get("return_request_status_id") in OPEN_RMA_STATUSES:
+                open_rma_warning = True
+                break
+
+    # -------------------------------------------------
     # 5. Get shipped quantity (reuse shipment logic)
     # -------------------------------------------------
     shipments = order_data.get("shipments", []) or []
@@ -1016,11 +1041,20 @@ async def vf_create_rma(body: CreateRmaBody):
     # -------------------------------------------------
     # 10. Respond to VF
     # -------------------------------------------------
-    return {
+    response = {
         "ok": True,
         "returnRequestId": rma_id,
         "message": "Return request submitted successfully"
     }
+
+    if open_rma_warning:
+        response["warning"] = (
+            "There is already a return request in progress for this item. "
+            "A customer service agent will review all requests together."
+        )
+
+    return response
+
 
 @app.post("/vf/orders/details")
 async def vf_order_details(body: OrderDetailsBody):
