@@ -886,63 +886,43 @@ async def vf_create_rma(body: CreateRmaBody):
             if si.get("order_item_id") == body.orderItemId:
                 shipped_qty += si.get("quantity", 0)
 
-    if shipped_qty < body.quantity:
-        raise HTTPException(
-            status_code=400,
-            detail="Return quantity exceeds shipped quantity"
-        )
     # -------------------------------------------------
-    # 5a. Enforce RMA reason / action policy (AUTHORITATIVE)
+    # 5a. Normalize RMA reason / action and enforce policy
     # -------------------------------------------------
 
-    # -------------------------------------------------
-    # Normalize VF string inputs → internal IDs
-    # -------------------------------------------------
-
-    # Reason
+    # ---- Normalize Reason (string → ID) ----
     if isinstance(body.reason, str):
         reverse_reason_map = {v: k for k, v in RMA_REASONS.items()}
         reason_id = reverse_reason_map.get(body.reason)
     else:
         reason_id = body.reason
 
-    # Action (may be None for cancel flows)
-    if isinstance(body.action, str):
-        reverse_action_map = {v: k for k, v in RMA_ACTIONS.items()}
-        action_id = reverse_action_map.get(body.action)
-    else:
-        action_id = body.action
-
-    # -------------------------------------------------
-    # Validate normalized reason
-    # -------------------------------------------------
     if reason_id not in RMA_REASONS:
         raise HTTPException(status_code=400, detail="Invalid RMA reason")
 
-    # CANCEL rules (Cancel Backorder / Cancel Order)
-    if reason_id in CANCEL_REASONS:
-        if shipped_qty > 0:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "This item has already shipped and cannot be cancelled. "
-                    "Please request a return instead."
-                )
-            )
-
-        # Force action internally (hidden from customer)
-        normalized_action = RMA_ACTIONS[3]  # Credit Memo
-        normalized_comments = body.comments or ""
-
-    # RETURN rules (all other reasons)
+    # ---- Normalize Action (string → ID, may be None) ----
+    if isinstance(body.action, str):
+        reverse_action_map = {
+            "repair": 1,
+            "replacement reqd.": 2,
+            "replacement required": 2,
+            "replacement": 2,
+            "credit memo": 3,
+            "store credit": 3
+        }
+        action_id = reverse_action_map.get(body.action.strip().lower())
     else:
-        if shipped_qty == 0:
+        action_id = body.action
+
+    # ---- RETURN rules ----
+    if reason_id in RETURN_REASONS:
+        if body.quantity <= 0 or body.quantity > ordered_qty:
+            raise HTTPException(status_code=400, detail="Invalid return quantity")
+
+        if shipped_qty < body.quantity:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "This item has not shipped yet. "
-                    "Please request cancellation instead of return."
-                )
+                detail="Return quantity exceeds shipped quantity"
             )
 
         if action_id not in RMA_ACTIONS:
@@ -952,6 +932,20 @@ async def vf_create_rma(body: CreateRmaBody):
             )
 
         normalized_action = RMA_ACTIONS[action_id]
+        normalized_comments = body.comments or ""
+
+    # ---- CANCEL rules ----
+    else:  # CANCEL_REASONS
+        if shipped_qty > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This item has already shipped and cannot be cancelled. "
+                    "Please request a return instead."
+                )
+            )
+
+        normalized_action = RMA_ACTIONS[3]  # Credit Memo
         normalized_comments = body.comments or ""
 
     # -------------------------------------------------
