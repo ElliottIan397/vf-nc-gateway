@@ -1012,6 +1012,8 @@ async def vf_order_details(body: OrderDetailsBody):
             "orderedQty": ordered_qty,
             "shippedQty": shipped_qty,
             "status": status,
+            "unitPrice": item.get("unit_price_value"),
+            "lineTotal": item.get("price_value"),
             "shipments": shipments,
             "rmas": item_rmas
         })
