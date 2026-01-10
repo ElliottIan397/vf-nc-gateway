@@ -895,10 +895,27 @@ async def vf_create_rma(body: CreateRmaBody):
     # 5a. Enforce RMA reason / action policy (AUTHORITATIVE)
     # -------------------------------------------------
 
-    reason_id = body.reason
-    action_id = body.action  # may be None for cancel flows
+    # -------------------------------------------------
+    # Normalize VF string inputs → internal IDs
+    # -------------------------------------------------
 
-    # Validate reason
+    # Reason
+    if isinstance(body.reason, str):
+        reverse_reason_map = {v: k for k, v in RMA_REASONS.items()}
+        reason_id = reverse_reason_map.get(body.reason)
+    else:
+        reason_id = body.reason
+
+    # Action (may be None for cancel flows)
+    if isinstance(body.action, str):
+        reverse_action_map = {v: k for k, v in RMA_ACTIONS.items()}
+        action_id = reverse_action_map.get(body.action)
+    else:
+        action_id = body.action
+
+    # -------------------------------------------------
+    # Validate normalized reason
+    # -------------------------------------------------
     if reason_id not in RMA_REASONS:
         raise HTTPException(status_code=400, detail="Invalid RMA reason")
 
