@@ -474,6 +474,30 @@ async def nc_create_return_request(payload: dict):
     return r.json()
 
 # -------------------------------------------------
+# nopCommerce RMA Canonical Enums & Policy Constraints
+# -------------------------------------------------
+
+# RMA Reasons (nopCommerce IDs)
+RMA_REASONS = {
+    1: "Wrong Product Ordered",
+    2: "Wrong Quantity Ordered",
+    3: "Defective Product",
+    4: "Received Wrong Product",
+    5: "Cancel Back Ordered Items",
+    6: "Cancel Order"
+}
+
+# RMA Actions (nopCommerce IDs)
+RMA_ACTIONS = {
+    1: "Repair",
+    2: "Replacement Reqd.",
+    3: "Credit Memo"
+}
+
+CANCEL_REASONS = {5, 6}
+RETURN_REASONS = {1, 2, 3, 4}
+
+# -------------------------------------------------
 # Pricing
 # -------------------------------------------------
 async def get_final_price(
@@ -867,6 +891,51 @@ async def vf_create_rma(body: CreateRmaBody):
             status_code=400,
             detail="Return quantity exceeds shipped quantity"
         )
+    # -------------------------------------------------
+    # 5a. Enforce RMA reason / action policy (AUTHORITATIVE)
+    # -------------------------------------------------
+
+    reason_id = body.reason
+    action_id = body.action  # may be None for cancel flows
+
+    # Validate reason
+    if reason_id not in RMA_REASONS:
+        raise HTTPException(status_code=400, detail="Invalid RMA reason")
+
+    # CANCEL rules (Cancel Backorder / Cancel Order)
+    if reason_id in CANCEL_REASONS:
+        if shipped_qty > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This item has already shipped and cannot be cancelled. "
+                    "Please request a return instead."
+                )
+            )
+
+        # Force action internally (hidden from customer)
+        normalized_action = RMA_ACTIONS[3]  # Credit Memo
+        normalized_comments = body.comments or ""
+
+    # RETURN rules (all other reasons)
+    else:
+        if shipped_qty == 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This item has not shipped yet. "
+                    "Please request cancellation instead of return."
+                )
+            )
+
+        if action_id not in RMA_ACTIONS:
+            raise HTTPException(
+                status_code=400,
+                detail="Action is required for return requests"
+            )
+
+        normalized_action = RMA_ACTIONS[action_id]
+        normalized_comments = body.comments or ""
 
     # -------------------------------------------------
     # 6. Resolve store
@@ -880,15 +949,17 @@ async def vf_create_rma(body: CreateRmaBody):
 
     now_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     
+    qty = body.quantity
+
     payload = {
         "store_id": STORE_ID,
         "order_item_id": body.orderItemId,
         "customer_id": customer_id,
-        "quantity": body.quantity,
-        "reason_for_return": body.reason,
-        "requested_action": body.action,
-        "customer_comments": body.comments or "",
-        "return_request_status_id": 0,  # ✅ Pending
+        "quantity": qty,
+        "reason_for_return": RMA_REASONS[reason_id],
+        "requested_action": normalized_action,
+        "customer_comments": normalized_comments,
+        "return_request_status_id": 0,
         "created_on_utc": now_utc,
         "updated_on_utc": now_utc
     }
@@ -917,11 +988,11 @@ async def vf_create_rma(body: CreateRmaBody):
         "store_id": STORE_ID,
         "order_item_id": body.orderItemId,
         "customer_id": customer_id,
-        "quantity": body.quantity,
+        "quantity": qty,
         "returned_quantity": 0,
-        "reason_for_return": body.reason,
-        "requested_action": body.action,
-        "customer_comments": body.comments or "",
+        "reason_for_return": RMA_REASONS[reason_id],
+        "requested_action": normalized_action,
+        "customer_comments": normalized_comments,
         "uploaded_file_id": 0,
         "staff_notes": "",
         "return_request_status_id": 0,
