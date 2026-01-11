@@ -755,6 +755,13 @@ async def vf_login(body: LoginBody):
         }
     )
 
+@app.post("/vf/logout")
+async def vf_logout(body: SessionAssertBody):
+    if body.sessionToken not in SESSIONS:
+        return {"ok": True}
+    SESSIONS.pop(body.sessionToken)
+    return {"ok": True}
+
     # Extract nopCommerce values
     frontend_token = data.get("token")
     customer_id = data.get("customer_id")
