@@ -4,6 +4,7 @@ import secrets
 import asyncio
 import json
 from typing import Dict, Any, List, Optional
+import re
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -76,6 +77,10 @@ class OrderDetailsBody(BaseModel):
 class OrderListBody(BaseModel):
     sessionToken: str
     approxOrderDateText: str | None = None
+
+class OrderSearchBody(BaseModel):
+    sessionToken: str
+    query: str
 
 class AddToCartBody(BaseModel):
     sessionToken: str
@@ -230,6 +235,61 @@ async def nc_get_wishlist(frontend_token: str):
 
     return r.json()
 
+async def find_products_in_recent_orders(
+    frontend_token: str,
+    orders: list,
+    query: str,
+    max_orders: int = 20,
+    max_matches: int = 5
+):
+    matches = {}
+
+    for o in orders[:max_orders]:
+        order_number = o.get("custom_order_number")
+        order_date = parse_iso(o.get("created_on"))
+
+        if not order_number:
+            continue
+
+        details = await nc_get_frontend_json(
+            f"/api-frontend/Order/Details/{order_number}",
+            headers={
+                "Authorization": frontend_token,
+                "Accept": "application/json"
+            }
+        )
+
+        for item in details.get("items", []):
+            name = item.get("product_name")
+            product_id = item.get("product_id")
+
+            score = score_product_name(name, query)
+            if score == 0:
+                continue
+
+            # dedupe by product_id, keep most recent
+            if (
+                product_id not in matches
+                or order_date > matches[product_id]["orderDate"]
+            ):
+                matches[product_id] = {
+                    "productId": product_id,
+                    "productName": name,
+                    "orderNumber": order_number,
+                    "orderDate": order_date,
+                    "quantity": item.get("quantity", 1),
+                    "score": score
+                }
+
+        if len(matches) >= max_matches:
+            break
+
+    return sorted(
+        matches.values(),
+        key=lambda x: (x["score"], x["orderDate"]),
+        reverse=True
+    )
+
 
 # ✅ ADD THIS HERE (top-level, no indentation)
 def build_updatecart_payload(cart_items, target_id, new_qty):
@@ -288,6 +348,28 @@ def resolve_month_range(text: str, rollover_days: int = 3):
 
     return start_date, end_date
 
+# ✅ NEW SCORING FUNCTION FOR SEARCH BY NAME
+def score_product_name(product_name: str, query: str) -> int:
+    if not product_name or not query:
+        return 0
+
+    name = product_name.lower()
+    q = query.lower()
+
+    tokens = re.findall(r"\w+", q)
+
+    score = 0
+
+    # token matches
+    for t in tokens:
+        if t in name:
+            score += 1
+
+    # phrase boost
+    if q in name:
+        score += 2
+
+    return score
 
 # -------------------------------------------------
 # nopCommerce auth helpers
@@ -755,13 +837,6 @@ async def vf_login(body: LoginBody):
         }
     )
 
-@app.post("/vf/logout")
-async def vf_logout(body: SessionAssertBody):
-    if body.sessionToken not in SESSIONS:
-        return {"ok": True}
-    SESSIONS.pop(body.sessionToken)
-    return {"ok": True}
-
     # Extract nopCommerce values
     frontend_token = data.get("token")
     customer_id = data.get("customer_id")
@@ -785,7 +860,12 @@ async def vf_logout(body: SessionAssertBody):
         "sessionToken": session_token
     }
 
-
+@app.post("/vf/logout")
+async def vf_logout(body: SessionAssertBody):
+    if body.sessionToken not in SESSIONS:
+        return {"ok": True}
+    SESSIONS.pop(body.sessionToken)
+    return {"ok": True}
 
 @app.post("/vf/prices")
 async def vf_prices(body: PricesBody):
@@ -1195,6 +1275,40 @@ async def vf_orders_list(body: OrderListBody):
             for o in orders
         ]
     }
+
+@app.post("/vf/orders/search")
+async def vf_orders_search(body: OrderSearchBody):
+    sess = require_session_token(body.sessionToken)
+    frontend_token = sess["frontend_token"]
+
+    # 1. Get recent orders (already customer-scoped)
+    data = await nc_get_frontend_json(
+        "/api-frontend/Order/CustomerOrders",
+        headers={
+            "Authorization": frontend_token,
+            "Accept": "application/json"
+        }
+    )
+
+    orders = data.get("orders", [])
+
+    if not orders:
+        return {"matches": []}
+
+    # 2. Find fuzzy matches
+    matches = await find_products_in_recent_orders(
+        frontend_token=frontend_token,
+        orders=orders,
+        query=body.query
+    )
+
+    # 3. Strip internal score before returning to VF
+    for m in matches:
+        m.pop("score", None)
+        if isinstance(m.get("orderDate"), datetime):
+            m["orderDate"] = m["orderDate"].isoformat()
+
+    return {"matches": matches}    
 
 @app.post("/vf/cart/add")
 async def vf_cart_add(body: AddToCartBody):
