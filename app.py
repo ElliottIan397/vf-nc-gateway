@@ -290,6 +290,9 @@ async def find_products_in_recent_orders(
         reverse=True
     )
 
+async def nc_backend_get(path: str) -> Any:
+    return await nc_get_backend_json(path)
+
 
 # ✅ ADD THIS HERE (top-level, no indentation)
 def build_updatecart_payload(cart_items, target_id, new_qty):
