@@ -66,6 +66,7 @@ class PricesBody(BaseModel):
     quantity: int = 1
     includeDiscounts: bool = True
     additionalCharge: float = 0.0
+    orderItemId: Optional[int] = None
 
 class SessionAssertBody(BaseModel):
     sessionToken: str
@@ -882,31 +883,40 @@ async def vf_prices(body: PricesBody):
         resolved_pid = pid
 
         try:
-            # --- Step 1: Validate product ---
-            product = await nc_backend_get(f"/Product/{pid}")
+            # -----------------------------
+            # CASE 1: order-history context
+            # -----------------------------
+            if body.orderItemId is not None:
+                order_item = await nc_get_backend_json(
+                    f"/OrderItem/GetProductByOrderItemId/{body.orderItemId}"
+                )
 
-            if not product or not product.get("published") or product.get("deleted"):
-                # --- Step 2: Resolve via MPN ---
-                mpn = product.get("manufacturer_part_number")
+                published = order_item.get("published")
+                deleted = order_item.get("deleted")
 
-                if not mpn:
-                    errors[str(pid)] = "PRODUCT_UNAVAILABLE"
-                    continue
+                if not published or deleted:
+                    mpn = order_item.get("manufacturer_part_number")
 
-                matches = await nc_backend_search_products({
-                    "manufacturer_part_number": mpn,
-                    "published": True,
-                    "deleted": False
-                })
+                    if not mpn:
+                        errors[str(pid)] = "PRODUCT_UNAVAILABLE"
+                        continue
 
-                if not matches:
-                    errors[str(pid)] = "PRODUCT_UNAVAILABLE"
-                    continue
+                    matches = await nc_get_backend_json(
+                        f"/Product/Search?manufacturerPartNumber={mpn}&published=true"
+                    )
 
-                # Store rule guarantees exactly one published product
-                resolved_pid = matches[0]["id"]
+                    if not matches:
+                        errors[str(pid)] = "PRODUCT_UNAVAILABLE"
+                        continue
 
-            # --- Step 3: Get price using resolved productId ---
+                    # Store rule: only ONE published product per MPN
+                    resolved_pid = matches[0]["id"]
+
+            # -----------------------------
+            # CASE 2: normal live catalog
+            # -----------------------------
+            # (no orderItemId → price directly by productId)
+
             price = await get_final_price(
                 product_id=resolved_pid,
                 customer_id=customer_id,
@@ -916,8 +926,8 @@ async def vf_prices(body: PricesBody):
             )
 
             prices[str(pid)] = {
-                "productId": resolved_pid,
-                "price": price
+                "productId": resolved_pid,   # internal only
+                "finalPrice": price
             }
 
         except Exception as e:
@@ -928,7 +938,6 @@ async def vf_prices(body: PricesBody):
         "prices": prices,
         "errors": errors
     }
-
 
 import logging
 
