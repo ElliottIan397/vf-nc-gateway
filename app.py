@@ -279,6 +279,7 @@ async def find_products_in_recent_orders(
                     "orderNumber": order_number,
                     "orderDate": order_date,
                     "quantity": item.get("quantity", 1),
+                    "pricePaid": item.get("unit_price_value"),
                     "score": score
                 }
 
