@@ -872,33 +872,60 @@ async def vf_prices(body: PricesBody):
     sess = require_session_token(body.sessionToken)
     customer_id = sess["customer_id"]
 
-    tasks = [
-        get_final_price(
-            product_id=pid,
-            customer_id=customer_id,
-            quantity=body.quantity,
-            include_discounts=body.includeDiscounts,
-            additional_charge=body.additionalCharge
-        )
-        for pid in body.productIds
-    ]
-
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
     prices: Dict[str, Any] = {}
     errors: Dict[str, Any] = {}
 
-    for pid, res in zip(body.productIds, results):
-        if isinstance(res, Exception):
-            errors[str(pid)] = str(res)
-        else:
-            prices[str(pid)] = res
+    for pid in body.productIds:
+        resolved_pid = pid
+
+        try:
+            # --- Step 1: Validate product ---
+            product = await nc_backend_get(f"/Product/{pid}")
+
+            if not product or not product.get("published") or product.get("deleted"):
+                # --- Step 2: Resolve via MPN ---
+                mpn = product.get("manufacturer_part_number")
+
+                if not mpn:
+                    errors[str(pid)] = "PRODUCT_UNAVAILABLE"
+                    continue
+
+                matches = await nc_backend_search_products({
+                    "manufacturer_part_number": mpn,
+                    "published": True,
+                    "deleted": False
+                })
+
+                if not matches:
+                    errors[str(pid)] = "PRODUCT_UNAVAILABLE"
+                    continue
+
+                # Store rule guarantees exactly one published product
+                resolved_pid = matches[0]["id"]
+
+            # --- Step 3: Get price using resolved productId ---
+            price = await get_final_price(
+                product_id=resolved_pid,
+                customer_id=customer_id,
+                quantity=body.quantity,
+                include_discounts=body.includeDiscounts,
+                additional_charge=body.additionalCharge
+            )
+
+            prices[str(pid)] = {
+                "productId": resolved_pid,
+                "price": price
+            }
+
+        except Exception as e:
+            errors[str(pid)] = str(e)
 
     return {
         "customerId": customer_id,
         "prices": prices,
         "errors": errors
     }
+
 
 import logging
 
