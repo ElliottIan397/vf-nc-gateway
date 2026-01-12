@@ -898,9 +898,32 @@ async def vf_prices(body: PricesBody):
                 if not published or deleted:
                     mpn = order_item.get("manufacturer_part_number")
 
+                    # -------------------------------------------------
+                    # NO MPN → exit to store search
+                    # -------------------------------------------------
                     if not mpn:
-                        errors[str(pid)] = "PRODUCT_UNAVAILABLE"
-                        continue
+                        return {
+                            "ok": False,
+                            "reason": "NO_PRODUCT_MATCH",
+                            "name": order_item.get("name"),
+                            "price": order_item.get("price")
+                        }
+
+                    matches = await nc_get_backend_json(
+                        f"/Product/Search?manufacturerPartNumber={mpn}&published=true"
+                    )
+
+                    if not matches:
+                        return {
+                            "ok": False,
+                            "reason": "NO_PRODUCT_MATCH",
+                            "name": order_item.get("name"),
+                            "price": order_item.get("price")
+                        }
+
+    # Store rule: only ONE published product per MPN
+    resolved_pid = matches[0]["id"]
+
 
                     matches = await nc_get_backend_json(
                         f"/Product/Search?manufacturerPartNumber={mpn}&published=true"
