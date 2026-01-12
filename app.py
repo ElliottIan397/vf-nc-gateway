@@ -921,18 +921,6 @@ async def vf_prices(body: PricesBody):
                             "price": order_item.get("price")
                         }
 
-    # Store rule: only ONE published product per MPN
-    resolved_pid = matches[0]["id"]
-
-
-                    matches = await nc_get_backend_json(
-                        f"/Product/Search?manufacturerPartNumber={mpn}&published=true"
-                    )
-
-                    if not matches:
-                        errors[str(pid)] = "PRODUCT_UNAVAILABLE"
-                        continue
-
                     # Store rule: only ONE published product per MPN
                     resolved_pid = matches[0]["id"]
 
