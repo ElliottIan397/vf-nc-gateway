@@ -1001,7 +1001,9 @@ async def vf_prices(body: PricesBody):
             }
 
         except Exception as e:
-            logger.error(f"PRICE ERROR pid={pid}: {e}")
+            logger.error(
+                f"PRICE ERROR original_pid={pid}, resolved_pid={resolved_pid}: {e}"
+            )
             return {
                 "ok": False,
                 "reason": "NO_PRODUCT_MATCH",
