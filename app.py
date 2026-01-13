@@ -67,6 +67,9 @@ class PricesBody(BaseModel):
     includeDiscounts: bool = True
     additionalCharge: float = 0.0
     orderItemId: Optional[int] = None
+    # 🔴 REQUIRED for store-search exit
+    name: Optional[str] = None
+    price: Optional[float] = None
 
 class SessionAssertBody(BaseModel):
     sessionToken: str
@@ -613,6 +616,13 @@ async def get_final_price(
 
     return data.get("final_price")
 
+async def is_product_published(product_id: int) -> bool:
+    try:
+        product = await nc_get_backend_json(f"/Product/GetProductById/{product_id}")
+        return bool(product.get("published")) and not bool(product.get("deleted"))
+    except Exception:
+        return False
+   
 async def nc_get_frontend_json(
     path: str,
     headers: Dict[str, str]
@@ -892,8 +902,8 @@ async def vf_prices(body: PricesBody):
                     f"/OrderItem/GetProductByOrderItemId/{body.orderItemId}"
                 )
 
-                published = order_item.get("published")
-                deleted = order_item.get("deleted")
+                published = bool(order_item.get("published", False))
+                deleted = bool(order_item.get("deleted", False))
 
                 if not published or deleted:
                     mpn = order_item.get("manufacturer_part_number")
@@ -906,7 +916,7 @@ async def vf_prices(body: PricesBody):
                             "ok": False,
                             "reason": "NO_PRODUCT_MATCH",
                             "name": order_item.get("name"),
-                            "price": order_item.get("price")
+                            "price": order_item.get("unit_price_value")
                         }
 
                     matches = await nc_get_backend_json(
@@ -918,7 +928,7 @@ async def vf_prices(body: PricesBody):
                             "ok": False,
                             "reason": "NO_PRODUCT_MATCH",
                             "name": order_item.get("name"),
-                            "price": order_item.get("price")
+                            "price": order_item.get("unit_price_value")
                         }
 
                     # Store rule: only ONE published product per MPN
@@ -927,7 +937,17 @@ async def vf_prices(body: PricesBody):
             # -----------------------------
             # CASE 2: normal live catalog
             # -----------------------------
-            # (no orderItemId → price directly by productId)
+            # Even if pricing works, unpublished products are not orderable
+
+            published = await is_product_published(resolved_pid)
+
+            if not published:
+                return {
+                    "ok": False,
+                    "reason": "NO_PRODUCT_MATCH",
+                    "name": body.name,
+                    "price": body.price
+                }
 
             price = await get_final_price(
                 product_id=resolved_pid,
@@ -943,6 +963,13 @@ async def vf_prices(body: PricesBody):
             }
 
         except Exception as e:
+            if _is_product_not_found_error(e):
+                return {
+                    "ok": False,
+                    "reason": "NO_PRODUCT_MATCH",
+                    "name": body.name,
+                    "price": body.price
+                }
             errors[str(pid)] = str(e)
 
     return {
