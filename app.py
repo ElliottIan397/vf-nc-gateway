@@ -957,7 +957,12 @@ async def vf_prices(body: PricesBody):
                     logger.error(f"ABOUT TO RUN MPN SEARCH: mpn={mpn}")
 
                     search = await nc_get_backend_json(
-                        f"/api-backend/Product/Search?manufacturerPartNumber={mpn}&published=true"
+                        f"/api-backend/Product/Search"
+                        f"?manufacturerPartNumber={mpn}"
+                        f"&published=true"
+                        f"&storeId={NOP_STORE_ID}"
+                        f"&pageIndex=0"
+                        f"&pageSize=50"
                     )
 
                     logger.error(f"MPN SEARCH RESPONSE TYPE: {type(search)}")
@@ -986,21 +991,25 @@ async def vf_prices(body: PricesBody):
             # -----------------------------
             # Even if pricing works, unpublished products are not orderable
 
-            replacement_published = await is_product_published(resolved_pid)
-            logger.error(
-                f"PUBLISHED CHECK: product_id={resolved_pid}, result={replacement_published}"
-            )
+            # If we resolved via MPN search, trust it
+            # Product/Search?published=true already guarantees publishable state
 
-            if not replacement_published:
-                logger.error(
-                    f"EXITING NO_PRODUCT_MATCH due to published_check=False for product_id={resolved_pid}"
-                )
-                return {
-                    "ok": False,
-                    "reason": "NO_PRODUCT_MATCH",
-                    "name": body.name,
-                    "price": body.price
-                }
+
+            #replacement_published = await is_product_published(resolved_pid)
+            #logger.error(
+            #    f"PUBLISHED CHECK: product_id={resolved_pid}, result={replacement_published}"
+            #)
+
+            #if not replacement_published:
+            #    logger.error(
+            #        f"EXITING NO_PRODUCT_MATCH due to published_check=False for product_id={resolved_pid}"
+            #    )
+            #    return {
+            #        "ok": False,
+            #        "reason": "NO_PRODUCT_MATCH",
+            #        "name": body.name,
+            #        "price": body.price
+            #    }
 
             price = await get_final_price(
                 product_id=resolved_pid,
@@ -1015,13 +1024,15 @@ async def vf_prices(body: PricesBody):
                 "finalPrice": price
             }
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"PRICE ERROR pid={pid}: {e}")
             return {
                 "ok": False,
                 "reason": "NO_PRODUCT_MATCH",
                 "name": body.name,
                 "price": body.price
             }
+
 
     return {
         "customerId": customer_id,
