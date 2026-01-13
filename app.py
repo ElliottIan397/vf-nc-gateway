@@ -944,6 +944,9 @@ async def vf_prices(body: PricesBody):
 
                     # Store rule: only ONE published product per MPN
                     resolved_pid = items[0]["id"]
+                    logger.error(
+                        f"MPN RESOLVED: original_pid={pid}, resolved_pid={resolved_pid}"
+                    )
 
             # -----------------------------
             # CASE 2: normal live catalog
@@ -951,8 +954,14 @@ async def vf_prices(body: PricesBody):
             # Even if pricing works, unpublished products are not orderable
 
             published = await is_product_published(resolved_pid)
+            logger.error(
+                f"PUBLISHED CHECK: product_id={resolved_pid}, result={published}"
+            )
 
             if not published:
+                logger.error(
+                    f"EXITING NO_PRODUCT_MATCH due to published_check=False for product_id={resolved_pid}"
+                )
                 return {
                     "ok": False,
                     "reason": "NO_PRODUCT_MATCH",
