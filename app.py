@@ -618,7 +618,7 @@ async def get_final_price(
 
 async def is_product_published(product_id: int) -> bool:
     try:
-        product = await nc_get_backend_json(f"/Product/GetProductById/{product_id}")
+        product = await nc_get_backend_json(f"/api-backend/Product/GetProductById/{product_id}")
         return bool(product.get("published")) and not bool(product.get("deleted"))
     except Exception:
         return False
