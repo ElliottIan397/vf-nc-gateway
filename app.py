@@ -906,17 +906,26 @@ async def vf_prices(body: PricesBody):
                 deleted = bool(order_item.get("deleted", False))
 
                 if not published or deleted:
-                    mpn = order_item.get("manufacturer_part_number")
-
-                    # -------------------------------------------------
-                    # NO MPN → exit to store search
-                    # -------------------------------------------------
-                    if not mpn:
+                    product_id = order_item.get("product_id")
+                    if not product_id:
                         return {
                             "ok": False,
                             "reason": "NO_PRODUCT_MATCH",
                             "name": order_item.get("name"),
                             "price": order_item.get("unit_price_value")
+                        }
+
+                    product = await nc_get_backend_json(
+                        f"/api-backend/Product/GetProductById/{product_id}"
+                    )
+
+                    mpn = product.get("manufacturer_part_number")
+                    if not mpn:
+                        return {
+                            "ok": False,
+                            "reason": "NO_PRODUCT_MATCH",
+                            "name": product.get("name"),
+                            "price": product.get("price")
                         }
 
                     search = await nc_get_backend_json(
