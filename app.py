@@ -618,7 +618,13 @@ async def get_final_price(
 
 async def is_product_published(product_id: int) -> bool:
     try:
-        product = await nc_get_backend_json(f"/api-backend/Product/GetProductsByIds/{product_id}")
+        products = await nc_get_backend_json(
+            f"/api-backend/Product/GetProductsByIds/{product_id}"
+        )
+        if not products:
+            return False
+
+        product = products[0]
         return bool(product.get("published")) and not bool(product.get("deleted"))
     except Exception:
         return False
@@ -925,11 +931,21 @@ async def vf_prices(body: PricesBody):
                             "price": order_item.get("unit_price_value")
                         }
 
-                    product = await nc_get_backend_json(
+                    products = await nc_get_backend_json(
                         f"/api-backend/Product/GetProductsByIds/{product_id}"
                     )
 
+                    if not products:
+                        return {
+                            "ok": False,
+                            "reason": "NO_PRODUCT_MATCH",
+                            "name": order_item.get("name"),
+                            "price": order_item.get("unit_price_value")
+                        }
+
+                    product = products[0]
                     mpn = product.get("manufacturer_part_number")
+
                     if not mpn:
                         return {
                             "ok": False,
