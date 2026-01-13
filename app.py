@@ -921,7 +921,9 @@ async def vf_prices(body: PricesBody):
                         f"ORIGINAL PRODUCT FLAGS: published={original_published}"
                     )
                     product_id = order_item.get("product_id")
+                    logger.error(f"CHECKPOINT 1: product_id={product_id}")
                     if not product_id:
+                        logger.error("CHECKPOINT 2: product_id missing → exit")
                         return {
                             "ok": False,
                             "reason": "NO_PRODUCT_MATCH",
@@ -932,6 +934,7 @@ async def vf_prices(body: PricesBody):
                     products = await nc_get_backend_json(
                         f"/api-backend/Product/GetProductsByIds/{product_id}"
                     )
+                    logger.error(f"CHECKPOINT 3: products_count={len(products) if products else 0}")
 
                     if not products:
                         return {
@@ -943,6 +946,7 @@ async def vf_prices(body: PricesBody):
 
                     product = products[0]
                     mpn = product.get("manufacturer_part_number")
+                    logger.error(f"CHECKPOINT 4: mpn_from_product={mpn}")
 
                     if not mpn:
                         return {
