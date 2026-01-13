@@ -919,11 +919,13 @@ async def vf_prices(body: PricesBody):
                             "price": order_item.get("unit_price_value")
                         }
 
-                    matches = await nc_get_backend_json(
+                    search = await nc_get_backend_json(
                         f"/api-backend/Product/Search?manufacturerPartNumber={mpn}&published=true"
                     )
 
-                    if not matches:
+                    items = search.get("items") or []
+
+                    if not items:
                         return {
                             "ok": False,
                             "reason": "NO_PRODUCT_MATCH",
@@ -932,7 +934,7 @@ async def vf_prices(body: PricesBody):
                         }
 
                     # Store rule: only ONE published product per MPN
-                    resolved_pid = matches[0]["id"]
+                    resolved_pid = items[0]["id"]
 
             # -----------------------------
             # CASE 2: normal live catalog
