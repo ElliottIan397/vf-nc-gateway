@@ -899,7 +899,7 @@ async def vf_prices(body: PricesBody):
             # -----------------------------
             if body.orderItemId is not None:
                 order_item = await nc_get_backend_json(
-                    f"/OrderItem/GetProductByOrderItemId/{body.orderItemId}"
+                    f"/api-backend/OrderItem/GetProductByOrderItemId/{body.orderItemId}"
                 )
 
                 published = bool(order_item.get("published", False))
@@ -920,7 +920,7 @@ async def vf_prices(body: PricesBody):
                         }
 
                     matches = await nc_get_backend_json(
-                        f"/Product/Search?manufacturerPartNumber={mpn}&published=true"
+                        f"/api-backend/Product/Search?manufacturerPartNumber={mpn}&published=true"
                     )
 
                     if not matches:
@@ -962,15 +962,13 @@ async def vf_prices(body: PricesBody):
                 "finalPrice": price
             }
 
-        except Exception as e:
-            if _is_product_not_found_error(e):
-                return {
-                    "ok": False,
-                    "reason": "NO_PRODUCT_MATCH",
-                    "name": body.name,
-                    "price": body.price
-                }
-            errors[str(pid)] = str(e)
+        except Exception:
+            return {
+                "ok": False,
+                "reason": "NO_PRODUCT_MATCH",
+                "name": body.name,
+                "price": body.price
+            }
 
     return {
         "customerId": customer_id,
