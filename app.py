@@ -911,16 +911,14 @@ async def vf_prices(body: PricesBody):
                 )
                 logger.error(
                     f"FETCHED PRODUCT BY ORDER ITEM: published={order_item.get('published')}, "
-                    f"deleted={order_item.get('deleted')}, "
                     f"mpn={order_item.get('manufacturer_part_number')}"
                 )
 
                 original_published = bool(order_item.get("published", False))
-                original_deleted = bool(order_item.get("deleted", False))
 
-                if not original_published or original_deleted:
+                if not original_published:
                     logger.error(
-                        f"ORIGINAL PRODUCT FLAGS: published={original_published}, deleted={original_deleted}"
+                        f"ORIGINAL PRODUCT FLAGS: published={original_published}"
                     )
                     product_id = order_item.get("product_id")
                     if not product_id:
