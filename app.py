@@ -884,6 +884,7 @@ async def vf_logout(body: SessionAssertBody):
 
 @app.post("/vf/prices")
 async def vf_prices(body: PricesBody):
+    logger.error("ENTERED vf_prices handler")
     sess = require_session_token(body.sessionToken)
     customer_id = sess["customer_id"]
 
@@ -891,6 +892,7 @@ async def vf_prices(body: PricesBody):
     errors: Dict[str, Any] = {}
 
     for pid in body.productIds:
+        logger.error(f"ENTER LOOP: pid={pid}, orderItemId={body.orderItemId}")
         resolved_pid = pid
 
         try:
@@ -901,11 +903,22 @@ async def vf_prices(body: PricesBody):
                 order_item = await nc_get_backend_json(
                     f"/api-backend/OrderItem/GetProductByOrderItemId/{body.orderItemId}"
                 )
+                logger.error(
+                    f"FETCHED PRODUCT BY ORDER ITEM: published={order_item.get('published')}, "
+                    f"deleted={order_item.get('deleted')}, "
+                    f"mpn={order_item.get('manufacturer_part_number')}"
+                )
 
-                published = bool(order_item.get("published", False))
-                deleted = bool(order_item.get("deleted", False))
 
-                if not published or deleted:
+                original_published = bool(order_item.get("published", False))
+                original_deleted = bool(order_item.get("deleted", False))
+
+
+
+                if not original_published or original_deleted:
+                    logger.error(
+                        f"ORIGINAL PRODUCT FLAGS: published={original_published}, deleted={original_deleted}"
+                    )
                     product_id = order_item.get("product_id")
                     if not product_id:
                         return {
@@ -953,12 +966,12 @@ async def vf_prices(body: PricesBody):
             # -----------------------------
             # Even if pricing works, unpublished products are not orderable
 
-            published = await is_product_published(resolved_pid)
+            replacement_published = await is_product_published(resolved_pid)
             logger.error(
-                f"PUBLISHED CHECK: product_id={resolved_pid}, result={published}"
+                f"PUBLISHED CHECK: product_id={resolved_pid}, result={replacement_published}"
             )
 
-            if not published:
+            if not replacement_published:
                 logger.error(
                     f"EXITING NO_PRODUCT_MATCH due to published_check=False for product_id={resolved_pid}"
                 )
