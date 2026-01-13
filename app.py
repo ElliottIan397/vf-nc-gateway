@@ -909,11 +909,8 @@ async def vf_prices(body: PricesBody):
                     f"mpn={order_item.get('manufacturer_part_number')}"
                 )
 
-
                 original_published = bool(order_item.get("published", False))
                 original_deleted = bool(order_item.get("deleted", False))
-
-
 
                 if not original_published or original_deleted:
                     logger.error(
@@ -941,11 +938,18 @@ async def vf_prices(body: PricesBody):
                             "price": product.get("price")
                         }
 
+                    logger.error(f"ABOUT TO RUN MPN SEARCH: mpn={mpn}")
+
                     search = await nc_get_backend_json(
                         f"/api-backend/Product/Search?manufacturerPartNumber={mpn}&published=true"
                     )
 
+                    logger.error(f"MPN SEARCH RESPONSE TYPE: {type(search)}")
+                    logger.error(f"MPN SEARCH RAW: {search}")
+
+
                     items = search.get("items") or []
+                    logger.error(f"MPN SEARCH ITEMS COUNT: {len(items)}")
 
                     if not items:
                         return {
