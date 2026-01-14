@@ -1020,9 +1020,16 @@ async def vf_prices(body: PricesBody):
                 "price": body.price
             }
 
+    # 🔴 NORMALIZE productIds FOR DOWNSTREAM EXECUTION
+    normalized_product_ids = [
+        prices[str(pid)]["productId"]
+        for pid in body.productIds
+        if str(pid) in prices
+    ]
 
     return {
         "customerId": customer_id,
+        "productIds": normalized_product_ids,
         "prices": prices,
         "errors": errors
     }
