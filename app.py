@@ -933,22 +933,23 @@ async def vf_prices(body: PricesBody):
                     logger.error(f"ABOUT TO RUN MPN SEARCH: mpn={mpn}")
 
                     search = await nc_get_backend_json(
-                        f"/api-backend/Product/Search"
-                        f"?manufacturerPartNumber={mpn}"
-                        f"&published=true"
-                        f"&storeId={NOP_STORE_ID}"
+                        f"/api-backend/Product/GetAll"
+                        f"?keywords={mpn}"
+                        f"&searchManufacturerPartNumber=true"
+                        f"&searchSku=false"
+                        f"&searchDescriptions=false"
+                        f"&overridePublished=false"
                         f"&pageIndex=0"
-                        f"&pageSize=50"
                     )
+
 
                     logger.error(f"MPN SEARCH RESPONSE TYPE: {type(search)}")
                     logger.error(f"MPN SEARCH RAW: {search}")
 
 
                     items = search.get("items") or []
-                    logger.error(f"MPN SEARCH ITEMS COUNT: {len(items)}")
 
-                    if not items:
+                    if len(items) != 1:
                         return {
                             "ok": False,
                             "reason": "NO_PRODUCT_MATCH",
@@ -956,11 +957,19 @@ async def vf_prices(body: PricesBody):
                             "price": order_item.get("unit_price_value")
                         }
 
-                    # Store rule: only ONE published product per MPN
+                    if items[0].get("manufacturer_part_number") != mpn:
+                        return {
+                            "ok": False,
+                            "reason": "NO_PRODUCT_MATCH",
+                            "name": order_item.get("name"),
+                            "price": order_item.get("unit_price_value")
+                        }
+
                     resolved_pid = items[0]["id"]
                     logger.error(
                         f"MPN RESOLVED: original_pid={pid}, resolved_pid={resolved_pid}"
                     )
+
 
             # -----------------------------
             # CASE 2: normal live catalog
