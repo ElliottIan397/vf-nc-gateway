@@ -1020,17 +1020,20 @@ async def vf_prices(body: PricesBody):
                 "price": body.price
             }
 
-    # 🔴 NORMALIZE productIds FOR DOWNSTREAM EXECUTION
-    normalized_product_ids = []
+    # 🔴 RETURN productIds FOR EVERY INPUT ITEM (UNCHANGED OR MPN-RESOLVED)
+    returned_product_ids = []
 
-    for pid, price_obj in prices.items():
-        if "productId" in price_obj:
-            normalized_product_ids.append(price_obj["productId"])
-
+    for pid in body.productIds:
+        pid_str = str(pid)
+        if pid_str in prices and "productId" in prices[pid_str]:
+            returned_product_ids.append(prices[pid_str]["productId"])
+        else:
+            # no match → keep original so VF can handle NO_MATCH / store search
+            returned_product_ids.append(pid)
 
     return {
         "customerId": customer_id,
-        "productIds": normalized_product_ids,
+        "productIds": returned_product_ids,
         "prices": prices,
         "errors": errors
     }
