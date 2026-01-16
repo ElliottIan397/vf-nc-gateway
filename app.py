@@ -1624,3 +1624,76 @@ async def vf_wishlist_sync(body: WishlistReadBody):
         "added": added,
         "skipped": len(cart_products) - added
     }
+
+@app.post("/vf/product/lookup/sku")
+async def vf_product_lookup_by_sku(body: dict):
+    sess = require_session_token(body["sessionToken"])
+    sku = body["sku"]
+
+    token = await get_admin_token()
+
+    product = await nc_get_json(
+        f"/api-backend/Product/GetProductBySku",
+        headers={"Authorization": token},
+        params={"sku": sku}
+    )
+
+    if not product or not product.get("id"):
+        return {"found": False}
+
+    return {
+        "found": True,
+        "productId": product["id"],
+        "name": product.get("name"),
+        "price": product.get("price"),
+        "imageURL": None,  # hydrate later if needed
+        "sku": product.get("sku"),
+        "mpn": product.get("manufacturer_part_number"),
+        "published": product.get("published"),
+        "deleted": product.get("deleted")
+    }
+
+@app.post("/vf/product/lookup/mpn")
+async def vf_product_lookup_by_mpn(body: dict):
+    sess = require_session_token(body["sessionToken"])
+    mpn = body["mpn"]
+
+    token = await get_admin_token()
+
+    search = await nc_get_json(
+        "/api-backend/Product/GetAll",
+        headers={"Authorization": token},
+        params={
+            "keywords": mpn,
+            "searchManufacturerPartNumber": "true",
+            "searchSku": "false",
+            "searchDescriptions": "false",
+            "overridePublished": "false",
+            "pageIndex": 0
+        }
+    )
+
+    items = search.get("items") or []
+
+    # MUST be exactly one exact MPN match
+    matches = [
+        p for p in items
+        if p.get("manufacturer_part_number") == mpn
+    ]
+
+    if len(matches) != 1:
+        return {"found": False}
+
+    product = matches[0]
+
+    if not product.get("published") or product.get("deleted"):
+        return {"found": False}
+
+    return {
+        "found": True,
+        "productId": product["id"],
+        "name": product.get("name"),
+        "price": product.get("price"),
+        "sku": product.get("sku"),
+        "mpn": product.get("manufacturer_part_number")
+    }
