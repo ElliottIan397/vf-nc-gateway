@@ -1655,40 +1655,37 @@ async def vf_product_lookup_by_sku(body: dict):
 
 @app.post("/vf/product/lookup/mpn")
 async def vf_product_lookup_by_mpn(body: dict):
-    sess = require_session_token(body["sessionToken"])
+    # 1. Validate session
+    require_session_token(body["sessionToken"])
     mpn = body["mpn"]
 
-    token = await get_admin_token()
-
-    search = await nc_get_json(
-        "/api-backend/Product/GetAll",
-        headers={"Authorization": token},
-        params={
-            "keywords": mpn,
-            "searchManufacturerPartNumber": "true",
-            "searchSku": "false",
-            "searchDescriptions": "false",
-            "overridePublished": "false",
-            "pageIndex": 0
-        }
+    # 2. Search published products by MPN (same as vf_prices)
+    search = await nc_get_backend_json(
+        "/api-backend/Product/GetAll"
+        f"?keywords={mpn}"
+        f"&searchManufacturerPartNumber=true"
+        f"&searchSku=false"
+        f"&searchDescriptions=false"
+        f"&overridePublished=false"
+        f"&pageIndex=0"
     )
 
     items = search.get("items") or []
 
-    # MUST be exactly one exact MPN match
-    matches = [
-        p for p in items
-        if p.get("manufacturer_part_number") == mpn
-    ]
-
-    if len(matches) != 1:
+    # 3. EXACT MATCH VALIDATION (single + exact MPN)
+    if len(items) != 1:
         return {"found": False}
 
-    product = matches[0]
+    product = items[0]
 
-    if not product.get("published") or product.get("deleted"):
+    if product.get("manufacturer_part_number") != mpn:
         return {"found": False}
 
+    # 4. Enforce published-only (your chosen rule)
+    if product.get("published") is not True:
+        return {"found": False}
+
+    # 5. Return VF-safe contract
     return {
         "found": True,
         "productId": product["id"],
@@ -1697,3 +1694,4 @@ async def vf_product_lookup_by_mpn(body: dict):
         "sku": product.get("sku"),
         "mpn": product.get("manufacturer_part_number")
     }
+
