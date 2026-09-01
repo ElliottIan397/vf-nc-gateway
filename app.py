@@ -1884,8 +1884,239 @@ async def vf_hubspot_discovery_note(body: HubSpotDiscoveryNoteBody):
 
 @app.post("/hubspot/webhook")
 async def hubspot_webhook(request: Request):
+
+    if not HUBSPOT_ACCESS_TOKEN:
+        raise HTTPException(
+            status_code=500,
+            detail="Missing HUBSPOT_ACCESS_TOKEN"
+        )
+
+    if not HANDOFF_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="Missing HANDOFF_API_KEY"
+        )
+
     payload = await request.json()
 
-    print("HUBSPOT WEBHOOK PAYLOAD:", payload)
+    # HubSpot sends webhook events as a list
+    events = payload if isinstance(payload, list) else [payload]
+
+    hubspot_headers = {
+        "Authorization": f"Bearer {HUBSPOT_ACCESS_TOKEN}",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    handoff_headers = {
+        "X-API-Key": HANDOFF_API_KEY,
+        "Accept": "application/json"
+    }
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+
+        for event in events:
+
+            # We only care about newly-created HubSpot Meetings
+            if event.get("subscriptionType") != "object.creation":
+                continue
+
+            if str(event.get("objectTypeId")) != "0-47":
+                continue
+
+            meeting_id = event.get("objectId")
+
+            if not meeting_id:
+                continue
+
+            # -------------------------------------------------
+            # 1. Meeting -> associated Contact
+            # -------------------------------------------------
+
+            assoc_response = await client.get(
+                f"https://api.hubapi.com/crm/v3/objects/meetings/{meeting_id}/associations/contacts",
+                headers=hubspot_headers
+            )
+
+            if assoc_response.status_code >= 400:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "error": "HubSpot meeting/contact association failed",
+                        "status": assoc_response.status_code,
+                        "body": assoc_response.text
+                    }
+                )
+
+            assoc_results = assoc_response.json().get("results", [])
+
+            if not assoc_results:
+                # Important: fail rather than acknowledge the webhook.
+                # HubSpot can retry the event.
+                raise HTTPException(
+                    status_code=503,
+                    detail="Meeting contact association not available yet"
+                )
+
+            contact_id = assoc_results[0].get("id")
+
+            if not contact_id:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Meeting contact ID not available yet"
+                )
+
+            # -------------------------------------------------
+            # 2. Contact -> Apollo handoff UUID
+            # -------------------------------------------------
+
+            contact_response = await client.get(
+                f"https://api.hubapi.com/crm/v3/objects/contacts/{contact_id}",
+                headers=hubspot_headers,
+                params={
+                    "properties": "engagements_last_meeting_booked_campaign"
+                }
+            )
+
+            if contact_response.status_code >= 400:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "error": "HubSpot contact retrieval failed",
+                        "status": contact_response.status_code,
+                        "body": contact_response.text
+                    }
+                )
+
+            properties = contact_response.json().get("properties", {})
+
+            handoff_id = properties.get(
+                "engagements_last_meeting_booked_campaign"
+            )
+
+            if not handoff_id:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Apollo handoff UUID not available on Contact yet"
+                )
+
+            # -------------------------------------------------
+            # 3. UUID -> stored Voiceflow discovery summary
+            # -------------------------------------------------
+
+            handoff_response = await client.get(
+                f"{HANDOFF_API_URL}/handoff/{handoff_id}",
+                headers=handoff_headers
+            )
+
+            if handoff_response.status_code == 404:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Apollo discovery handoff not available yet"
+                )
+
+            if handoff_response.status_code >= 400:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "error": "Apollo handoff retrieval failed",
+                        "status": handoff_response.status_code,
+                        "body": handoff_response.text
+                    }
+                )
+
+            handoff_data = handoff_response.json()
+            discovery_summary = handoff_data.get("discovery_summary")
+
+                        # Duplicate webhook protection
+            if handoff_data.get("status") == "completed":
+                logger.info(
+                    f"Apollo handoff already completed: {handoff_id}"
+                )
+                continue
+
+            if not discovery_summary:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Apollo discovery summary is empty"
+                )
+
+            # -------------------------------------------------
+            # 4. Create HubSpot Contact Note
+            # -------------------------------------------------
+
+            from datetime import timezone
+
+            timestamp = (
+                datetime.now(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
+
+            note_payload = {
+                "properties": {
+                    "hs_timestamp": timestamp,
+                    "hs_note_body": discovery_summary
+                },
+                "associations": [
+                    {
+                        "to": {
+                            "id": contact_id
+                        },
+                        "types": [
+                            {
+                                "associationCategory": "HUBSPOT_DEFINED",
+                                "associationTypeId": 202
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            note_response = await client.post(
+                "https://api.hubapi.com/crm/v3/objects/notes",
+                headers=hubspot_headers,
+                json=note_payload
+            )
+
+            if note_response.status_code >= 400:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "error": "HubSpot note creation failed",
+                        "status": note_response.status_code,
+                        "body": note_response.text
+                    }
+                )
+
+            note_id = note_response.json().get("id")
+
+
+                        # -------------------------------------------------
+            # 5. Mark handoff completed
+            # -------------------------------------------------
+
+            complete_response = await client.post(
+                f"{HANDOFF_API_URL}/handoff/{handoff_id}/complete",
+                headers=handoff_headers
+            )
+
+            if complete_response.status_code >= 400:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "error": "Apollo handoff completion failed",
+                        "status": complete_response.status_code,
+                        "body": complete_response.text
+                    }
+                )
+                
+            logger.info(
+                f"Apollo discovery note created: "
+                f"meeting={meeting_id}, "
+                f"contact={contact_id}, "
+                f"handoff={handoff_id}, "
+                f"note={note_id}"
+            )
 
     return {"ok": True}
