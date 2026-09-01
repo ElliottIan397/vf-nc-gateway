@@ -39,6 +39,8 @@ NC_ADMIN_PASSWORD = os.getenv("NC_ADMIN_PASSWORD", "")
 
 # HubSpot
 HUBSPOT_ACCESS_TOKEN = os.getenv("HUBSPOT_ACCESS_TOKEN", "")
+HANDOFF_API_KEY = os.getenv("HANDOFF_API_KEY", "")
+HANDOFF_API_URL = "https://handoff.digitolservices.com"
 
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "3600"))
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "12.0"))
@@ -121,6 +123,10 @@ class CreateRmaBody(BaseModel):
 class HubSpotDiscoveryNoteBody(BaseModel):
     handoff_id: str
     discovery_summary: str
+
+class HandoffStoreBody(BaseModel):
+    handoff_id: str
+    discovery_summary: str    
 
 # -------------------------------------------------
 # App
@@ -1701,6 +1707,45 @@ async def vf_product_lookup_by_mpn(body: dict):
         "sku": product.get("sku"),
         "mpn": product.get("manufacturer_part_number")
     }
+
+@app.post("/vf/handoff")
+async def vf_handoff_store(body: HandoffStoreBody):
+
+    if not HANDOFF_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="Missing HANDOFF_API_KEY"
+        )
+
+    headers = {
+        "X-API-Key": HANDOFF_API_KEY,
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "handoff_id": body.handoff_id,
+        "discovery_summary": body.discovery_summary
+    }
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        response = await client.post(
+            f"{HANDOFF_API_URL}/handoff",
+            headers=headers,
+            json=payload
+        )
+
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "Apollo handoff storage failed",
+                "status": response.status_code,
+                "body": response.text
+            }
+        )
+
+    return {"ok": True}
 
 # -------------------------------------------------
 # HubSpot - Apollo AI Discovery Note
