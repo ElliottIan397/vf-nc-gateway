@@ -37,6 +37,9 @@ NC_PRICE_PATH_TEMPLATE = os.getenv(
 NC_ADMIN_EMAIL = os.getenv("NC_ADMIN_EMAIL", "")
 NC_ADMIN_PASSWORD = os.getenv("NC_ADMIN_PASSWORD", "")
 
+# HubSpot
+HUBSPOT_ACCESS_TOKEN = os.getenv("HUBSPOT_ACCESS_TOKEN", "")
+
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "3600"))
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "12.0"))
 
@@ -114,6 +117,10 @@ class CreateRmaBody(BaseModel):
     reason: str
     action: str
     comments: Optional[str] = ""
+
+class HubSpotDiscoveryNoteBody(BaseModel):
+    handoff_id: str
+    discovery_summary: str
 
 # -------------------------------------------------
 # App
@@ -1695,3 +1702,137 @@ async def vf_product_lookup_by_mpn(body: dict):
         "mpn": product.get("manufacturer_part_number")
     }
 
+# -------------------------------------------------
+# HubSpot - Apollo AI Discovery Note
+# -------------------------------------------------
+
+@app.post("/vf/hubspot/discovery-note")
+async def vf_hubspot_discovery_note(body: HubSpotDiscoveryNoteBody):
+
+    if not HUBSPOT_ACCESS_TOKEN:
+        raise HTTPException(
+            status_code=500,
+            detail="Missing HUBSPOT_ACCESS_TOKEN"
+        )
+
+    headers = {
+        "Authorization": f"Bearer {HUBSPOT_ACCESS_TOKEN}",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    # -------------------------------------------------
+    # 1. Find HubSpot Contact using Apollo handoff UUID
+    # -------------------------------------------------
+
+    search_payload = {
+        "filterGroups": [
+            {
+                "filters": [
+                    {
+                        "propertyName": "engagements_last_meeting_booked_campaign",
+                        "operator": "EQ",
+                        "value": body.handoff_id
+                    }
+                ]
+            }
+        ],
+        "properties": [
+            "email",
+            "firstname",
+            "lastname",
+            "engagements_last_meeting_booked_campaign"
+        ],
+        "limit": 1
+    }
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        search_response = await client.post(
+            "https://api.hubapi.com/crm/v3/objects/contacts/search",
+            headers=headers,
+            json=search_payload
+        )
+
+    if search_response.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "HubSpot contact search failed",
+                "status": search_response.status_code,
+                "body": search_response.text
+            }
+        )
+
+    search_data = search_response.json()
+    results = search_data.get("results", [])
+
+    if not results:
+        return {
+            "ok": False,
+            "reason": "CONTACT_NOT_FOUND"
+        }
+
+    contact_id = results[0].get("id")
+
+    if not contact_id:
+        raise HTTPException(
+            status_code=502,
+            detail="HubSpot contact ID missing from search result"
+        )
+
+    # -------------------------------------------------
+    # 2. Create Note and associate it with Contact
+    # -------------------------------------------------
+
+    from datetime import timezone
+
+    timestamp = (
+        datetime.now(timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+    note_payload = {
+        "properties": {
+            "hs_timestamp": timestamp,
+            "hs_note_body": body.discovery_summary
+        },
+        "associations": [
+            {
+                "to": {
+                    "id": contact_id
+                },
+                "types": [
+                    {
+                        "associationCategory": "HUBSPOT_DEFINED",
+                        "associationTypeId": 202
+                    }
+                ]
+            }
+        ]
+    }
+
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+        note_response = await client.post(
+            "https://api.hubapi.com/crm/v3/objects/notes",
+            headers=headers,
+            json=note_payload
+        )
+
+    if note_response.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "HubSpot note creation failed",
+                "status": note_response.status_code,
+                "body": note_response.text
+            }
+        )
+
+    note_data = note_response.json()
+
+    return {
+        "ok": True,
+        "contactId": contact_id,
+        "noteId": note_data.get("id")
+    }
