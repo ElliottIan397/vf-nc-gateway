@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 import re
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 import calendar
@@ -1836,3 +1836,11 @@ async def vf_hubspot_discovery_note(body: HubSpotDiscoveryNoteBody):
         "contactId": contact_id,
         "noteId": note_data.get("id")
     }
+
+@app.post("/hubspot/webhook")
+async def hubspot_webhook(request: Request):
+    payload = await request.json()
+
+    print("HUBSPOT WEBHOOK PAYLOAD:", payload)
+
+    return {"ok": True}
